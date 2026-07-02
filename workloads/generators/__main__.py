@@ -26,6 +26,13 @@ def main() -> int:
     from workloads.generators.burstgpt import register_args as bg_register
     bg_register(bg)
 
+    gg = sub.add_parser(
+        "geographic",
+        help="Existing JSONL -> geographically-distributed UE/GPU workload (Phase 1)",
+    )
+    from workloads.generators.geographic import register_args as gg_register
+    gg_register(gg)
+
     args = parser.parse_args()
 
     if args.generator == "sharegpt":
@@ -34,6 +41,10 @@ def main() -> int:
 
     if args.generator == "burstgpt":
         from workloads.generators.burstgpt import run
+        return run(args)
+
+    if args.generator == "geographic":
+        from workloads.generators.geographic import run
         return run(args)
 
     parser.error(f"Unknown generator: {args.generator}")

@@ -4,6 +4,31 @@ import random
 from .logger import get_logger
 
 
+# Geographic/communication fields written by
+# `python -m workloads.generators geographic` (Phase 1 spec section 20/22.3).
+# Present only on geographic workloads; absent on ordinary flat JSONL rows.
+_GEO_FIELDS = (
+    'user_id', 'user_x_m', 'user_y_m',
+    'gpu_id', 'gpu_x_m', 'gpu_y_m', 'distance_m', 'assigned_instance_id',
+    'network_throughput_mbps',
+    'request_payload_bytes', 'first_token_payload_bytes',
+    'uplink_distance_latency_ns', 'uplink_serialization_latency_ns', 'uplink_latency_ns',
+    'downlink_distance_latency_ns', 'downlink_serialization_latency_ns', 'downlink_latency_ns',
+    'communication_latency_ns',
+    'request_send_time_ns',
+)
+
+
+def _extract_geo_fields(row):
+    """Pull the optional geographic/communication fields out of a JSONL row.
+
+    Returns None (not an empty dict) when none are present, so callers can
+    cheaply tell "old-format workload" from "geographic workload".
+    """
+    geo = {k: row[k] for k in _GEO_FIELDS if k in row}
+    return geo or None
+
+
 class Router:
     def __init__(
             self,
@@ -42,11 +67,19 @@ class Router:
             self._select_instance = self._rand_select
         elif self.routing_policy == "LOAD":
             self._select_instance = self._least_load_select
+        elif self.routing_policy == "PROMPT":
+            self._select_instance = self._prompt_length_select
+        elif self.routing_policy == "QUEUE":
+            self._select_instance = self._queue_select
+        elif self.routing_policy == "HYBRID":
+            self._select_instance = self._hybrid_select
         elif self.routing_policy == "CUSTOM":
             self._select_instance = self._custom_select
+        elif self.routing_policy == "NEAREST":
+            self._select_instance = self._nearest_select
         else:
             raise ValueError(f"Unknown routing_policy '{routing_policy}'. "
-                             "Supported: RR, RAND, LOAD, CUSTOM")
+                             "Supported: RR, RAND, LOAD, PROMPT, QUEUE, HYBRID, CUSTOM, NEAREST")
         self.logger = get_logger(self.__class__)
 
     # -----------------------------------------------------------------------
@@ -62,16 +95,16 @@ class Router:
         else:
             self.prefill_rr_counter = value
 
-    def _rr_select(self, schedulers, role):
+    def _rr_select(self, schedulers, role, req_data=None):
         num_instances = len(schedulers)
         idx = self._get_counter(role) % num_instances
         self._set_counter(role, idx + 1)
         return idx
 
-    def _rand_select(self, schedulers, role):
+    def _rand_select(self, schedulers, role, req_data=None):
         return self._rnd.randrange(len(schedulers))
 
-    def _least_load_select(self, schedulers, role):
+    def _least_load_select(self, schedulers, role, req_data=None):
         """vLLM-style least-loaded routing, normalized by instance capacity."""
         best_idx = 0
         best_score = float('inf')
@@ -93,8 +126,108 @@ class Router:
         self._set_counter(role, (best_idx + 1) % num_instances)
         return best_idx
 
-    def _custom_select(self, schedulers, role):
+    def _queue_score(self, sched):
+        waiting = len(sched.request)
+        running = sum(len(b.requests) for b in sched.inflight)
+        return waiting * 4 + running
+
+    def _token_capacity(self, sched):
+        cap = sched.max_num_batched_tokens
+        if cap == 0:
+            return float('inf')
+        return cap
+
+    def _prompt_length_select(self, schedulers, role, req_data=None):
+        """Route short prompts to small token-budget instances and long prompts to large ones."""
+        prompt_len = int(req_data['input_toks']) if req_data else 0
+        best_idx = 0
+        best_key = None
+        num_instances = len(schedulers)
+        start = self._get_counter(role) % num_instances
+        for offset in range(num_instances):
+            idx = (start + offset) % num_instances
+            sched = schedulers[idx]
+            cap = self._token_capacity(sched)
+            queue = self._queue_score(sched)
+            if cap >= prompt_len:
+                key = (0, cap, queue, offset)
+            else:
+                key = (1, -cap, queue, offset)
+            if best_key is None or key < best_key:
+                best_key = key
+                best_idx = idx
+        self._set_counter(role, (best_idx + 1) % num_instances)
+        return best_idx
+
+    def _queue_select(self, schedulers, role, req_data=None):
+        """Route to the instance with the smallest current queue pressure."""
+        best_idx = 0
+        best_key = None
+        num_instances = len(schedulers)
+        start = self._get_counter(role) % num_instances
+        for offset in range(num_instances):
+            idx = (start + offset) % num_instances
+            sched = schedulers[idx]
+            key = (self._queue_score(sched), offset)
+            if best_key is None or key < best_key:
+                best_key = key
+                best_idx = idx
+        self._set_counter(role, (best_idx + 1) % num_instances)
+        return best_idx
+
+    def _hybrid_select(self, schedulers, role, req_data=None):
+        """Blend prompt-length affinity with current queue pressure."""
+        prompt_len = max(1, int(req_data['input_toks']) if req_data else 1)
+        best_idx = 0
+        best_score = float('inf')
+        num_instances = len(schedulers)
+        start = self._get_counter(role) % num_instances
+        max_queue = max((self._queue_score(s) for s in schedulers), default=0)
+        queue_denom = max(1, max_queue)
+        finite_caps = [self._token_capacity(s) for s in schedulers
+                       if self._token_capacity(s) != float('inf')]
+        max_finite_cap = max(finite_caps, default=prompt_len)
+
+        for offset in range(num_instances):
+            idx = (start + offset) % num_instances
+            sched = schedulers[idx]
+            cap = self._token_capacity(sched)
+            effective_cap = max_finite_cap * 2 if cap == float('inf') else cap
+            if cap >= prompt_len:
+                prompt_score = abs(effective_cap - prompt_len) / max(1, effective_cap)
+            else:
+                prompt_score = 1.0 + (prompt_len - effective_cap) / max(1, prompt_len)
+            queue_score = self._queue_score(sched) / queue_denom
+            score = prompt_score + queue_score
+            if score < best_score:
+                best_score = score
+                best_idx = idx
+        self._set_counter(role, (best_idx + 1) % num_instances)
+        return best_idx
+
+    def _custom_select(self, schedulers, role, req_data=None):
         raise NotImplementedError("Implement custom routing policy.")
+
+    def _nearest_select(self, schedulers, role, req_data=None):
+        """Route to the pre-assigned nearest-GPU instance (geographic workloads).
+
+        Uses ``assigned_instance_id`` computed offline by the geographic
+        workload generator. No load/queue/KV-cache-based reselection.
+        """
+        if req_data is None or 'assigned_instance_id' not in req_data:
+            raise RuntimeError(
+                "NEAREST routing policy requires 'assigned_instance_id' in the "
+                "workload (generate it with `python -m workloads.generators geographic`)."
+            )
+        target_instance_id = req_data['assigned_instance_id']
+        for idx, sched in enumerate(schedulers):
+            if sched.instance_id == target_instance_id:
+                return idx
+        raise RuntimeError(
+            f"NEAREST routing: assigned_instance_id {target_instance_id} does not "
+            f"match any available {role} instance (valid ids: "
+            f"{[s.instance_id for s in schedulers]})."
+        )
 
     # -----------------------------------------------------------------------
     # Request loading and real-time routing
@@ -149,6 +282,11 @@ class Router:
         if enable_prefix_caching:
             req_data['input_hash_ids'] = row.get('input_tok_ids', [])
             req_data['output_hash_ids'] = row.get('output_tok_ids', [])
+        if 'assigned_instance_id' in row:
+            req_data['assigned_instance_id'] = int(row['assigned_instance_id'])
+        geo = _extract_geo_fields(row)
+        if geo is not None:
+            req_data['geo'] = geo
         self._pending_requests.append(req_data)
 
     def _load_agentic_session(self, row, enable_prefix_caching):
@@ -198,8 +336,9 @@ class Router:
             if req_data['arrival_time_ns'] > current_time_ns:
                 break
 
-            instance_id = self._select_instance(self.prefill_schedulers, "prefill")
+            instance_id = self._select_instance(self.prefill_schedulers, "prefill", req_data)
             sched = self.prefill_schedulers[instance_id]
+            geo = req_data.get('geo')
 
             if sched.enable_prefix_caching:
                 sched.add_request([
@@ -207,13 +346,13 @@ class Router:
                     req_data['input_toks'], req_data['output_toks'],
                     req_data['arrival_time_ns'], sched.instance_id,
                     req_data.get('input_hash_ids', []), req_data.get('output_hash_ids', []),
-                ], is_init=self._is_init)
+                ], is_init=self._is_init, geo=geo)
             else:
                 sched.add_request([
                     req_data['index'], sched.model,
                     req_data['input_toks'], req_data['output_toks'],
                     req_data['arrival_time_ns'], sched.instance_id,
-                ], is_init=self._is_init)
+                ], is_init=self._is_init, geo=geo)
 
             self._pending_idx += 1
             routed += 1
@@ -323,5 +462,6 @@ class Router:
 
     def transfer_prefill_request(self, requests):
         for req in requests:
-            instance_id = self._select_instance(self.decode_schedulers, "decode")
+            req_data = {'input_toks': req.original_input}
+            instance_id = self._select_instance(self.decode_schedulers, "decode", req_data)
             self.decode_schedulers[instance_id].add_decode(req)

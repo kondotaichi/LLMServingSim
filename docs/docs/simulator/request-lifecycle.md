@@ -94,6 +94,9 @@ The router applies its policy (`--request-routing-policy`):
 | `LOAD` (default) | vLLM-style: pick instance with smallest `waiting * 4 + running` score |
 | `RR` | Pure round-robin |
 | `RAND` | Random uniform |
+| `PROMPT` | Prompt-length aware: short prompts prefer smaller `max_num_batched_tokens`, long prompts prefer larger budgets |
+| `QUEUE` | Pick the instance with the smallest current queue pressure |
+| `HYBRID` | Blend prompt-length fit with queue pressure |
 | `CUSTOM` | Pluggable in `serving/core/router.py` |
 
 For **prefill/decode disaggregation**, the router only considers

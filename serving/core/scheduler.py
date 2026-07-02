@@ -264,6 +264,9 @@ class Scheduler:
             prefill_k_list = []
             decode_k_list = []
             for req in batch_req:
+                req.account_admission(current)
+                if req.first_schedule_time_ns == -1:
+                    req.first_schedule_time_ns = current
                 if req.is_prefill():
                     # Use scheduled_tokens for chunk size
                     chunk_size = scheduled_tokens.get(req.id, req.original_input - req.num_computed_tokens)
@@ -579,12 +582,15 @@ class Scheduler:
                     self.memory.evict_prefix_cache(storage_evict_size, self.prefix_storage)
 
             for req in batch_req:
+                req.account_admission(current)
+                if req.first_schedule_time_ns == -1:
+                    req.first_schedule_time_ns = current
                 # Update the prefix cache for incoming batch
                 # NOTE: Moved to add_done() to ensure prefix cache is updated after chunk computation
                 # self.memory.cache_unfinished_req(req, Device.NPU)
                 # if self.prefix_storage is not None:
                 #     self.memory.cache_unfinished_req(req, self.prefix_storage)
-                
+
                 if req.is_prefill():
                     # Use scheduled_tokens for chunk size. num_computed_tokens
                     # already includes any prefix-cache hit (memory_model.py
@@ -692,13 +698,24 @@ class Scheduler:
             "Batch #%d is done",
             batch.batch_id,
         )
-                
+        batch.finish_time_ns = finish
+        batch_dur = finish - batch.batch_time
+
         pool = []
         for req in batch.requests:
             # For chunked prefill, use computed tokens to determine prefill vs decode
             # Use is_prefill() method which checks num_computed_tokens < original_input
             is_prefill_req = req.is_prefill()
-            
+
+            # Geographic Phase 1: attribute this batch's wall-clock duration to
+            # prefill_service_ns or decode_active_ns. Discriminated by whether
+            # TTFT is stamped yet (not is_prefill()) so the full-prefix-cache-hit
+            # edge case still satisfies queueing_before_ttft+prefill_service==ttft.
+            if req.ttft == -1:
+                req.prefill_service_ns += batch_dur
+            else:
+                req.decode_active_ns += batch_dur
+
             # change phase
             if is_prefill_req:
                 # Get chunk_len from scheduling step
@@ -800,6 +817,10 @@ class Scheduler:
                     self.memory.cache_unfinished_req(req, Device.NPU)
                     if self.prefix_storage is not None:
                         self.memory.cache_unfinished_req(req, self.prefix_storage)
+                # Geographic Phase 1: re-arm the queueing timer -- this request
+                # is waiting again until its next schedule() admission (captures
+                # chunked-prefill inter-chunk waits and decode re-waits).
+                req.waiting_since_ns = finish
                 pool.append(req)
         # return to request pool, both are already sorted with arrival_time
         if self.prioritize_prefill:
@@ -819,8 +840,8 @@ class Scheduler:
         return self.batch_ids
 
     # add a request
-    def add_request(self, req, is_init=True):
-        new_req = Request(*(req), is_init=is_init)
+    def add_request(self, req, is_init=True, geo=None):
+        new_req = Request(*(req), is_init=is_init, geo=geo)
         # Maintain arrival-time sort order (required by schedule_base/schedule_with_prefix)
         bisect.insort(self.request, new_req, key=lambda r: (r.arrival, r.id))
         return
@@ -893,6 +914,10 @@ class Scheduler:
                 "Time to First Token": "TTFT",
                 "Time per Output Token (excl. 1st token)": "TPOT",
                 "Inter-token Latency": "ITL",
+                "End-to-End TTFT": "E2E-TTFT",
+                "Queueing Before TTFT": "QUEUE-TTFT",
+                "Prefill Service": "PREFILL",
+                "Decode After TTFT": "DECODE",
             }[title]
             spacing = " " * num_space
             print_markup(f"Mean {short} (ms){spacing}:                                                     {mean:.2f}")
@@ -902,6 +927,16 @@ class Scheduler:
         _render("Time to First Token", ttft_values)
         _render("Time per Output Token (excl. 1st token)", tpot_values)
         _render("Inter-token Latency", itl_values, num_space=1)
+
+        # --- Geographic Phase 1 (no-ops / "no data" for non-geographic workloads) ---
+        e2e_ttft_values = [req.e2e_ttft_ns for req in self.done if req.e2e_ttft_ns >= 0]
+        queueing_values = [req.queueing_before_ttft_ns for req in self.done if req.e2e_ttft_ns >= 0]
+        prefill_values = [req.prefill_service_ns for req in self.done if req.e2e_ttft_ns >= 0]
+        decode_values = [req.decode_after_ttft_ns for req in self.done if req.e2e_ttft_ns >= 0]
+        _render("End-to-End TTFT", e2e_ttft_values)
+        _render("Queueing Before TTFT", queueing_values, num_space=0)
+        _render("Prefill Service", prefill_values, num_space=2)
+        _render("Decode After TTFT", decode_values, num_space=1)
 
     # print each request results
     def print_request_result(self):
@@ -932,10 +967,24 @@ class Scheduler:
             
             # Write the column headers
             if not is_append:
-                writer.writerow(['instance id', 'request id', 'model', 'input', 'output', 
-                                'arrival', 'end_time', 'latency', 
-                                'queuing_delay', 'TTFT', 'TPOT', 'ITL'])
-            
+                writer.writerow(['instance id', 'request id', 'model', 'input', 'output',
+                                'arrival', 'end_time', 'latency',
+                                'queuing_delay', 'TTFT', 'TPOT', 'ITL',
+                                # --- Geographic Phase 1 (blank/-1 for non-geographic workloads) ---
+                                'user_id', 'gpu_id',
+                                'user_x_m', 'user_y_m', 'gpu_x_m', 'gpu_y_m', 'distance_m',
+                                'network_throughput_mbps', 'request_payload_bytes', 'first_token_payload_bytes',
+                                'uplink_distance_latency_ns', 'uplink_serialization_latency_ns', 'uplink_latency_ns',
+                                'downlink_distance_latency_ns', 'downlink_serialization_latency_ns', 'downlink_latency_ns',
+                                'communication_latency_ns',
+                                'request_send_time_ns', 'gpu_arrival_time_ns', 'first_schedule_time_ns',
+                                'first_token_ready_time_ns', 'first_token_received_time_ns', 'request_end_time_ns',
+                                'queueing_before_ttft_ns', 'prefill_service_ns', 'simulator_ttft_ns', 'e2e_ttft_ns',
+                                'decode_queueing_ns', 'decode_active_ns', 'decode_after_ttft_ns',
+                                'request_completion_latency_ns',
+                                'ttft_bottleneck', 'total_latency_bottleneck',
+                                'communication_ratio', 'queueing_ratio', 'prefill_ratio', 'decode_ratio'])
+
             # Write each request's information
             for req in self.done:
                 writer.writerow([
@@ -950,7 +999,45 @@ class Scheduler:
                     req.queuing_delay,
                     req.ttft,
                     req.tpot,
-                    req.itl
+                    req.itl,
+                    # --- Geographic Phase 1 ---
+                    req.user_id if req.user_id is not None else '',
+                    req.gpu_id if req.gpu_id is not None else '',
+                    req.user_x_m if req.user_x_m is not None else '',
+                    req.user_y_m if req.user_y_m is not None else '',
+                    req.gpu_x_m if req.gpu_x_m is not None else '',
+                    req.gpu_y_m if req.gpu_y_m is not None else '',
+                    req.distance_m if req.distance_m is not None else '',
+                    req.network_throughput_mbps if req.network_throughput_mbps is not None else '',
+                    req.request_payload_bytes if req.request_payload_bytes is not None else '',
+                    req.first_token_payload_bytes if req.first_token_payload_bytes is not None else '',
+                    req.uplink_distance_latency_ns,
+                    req.uplink_serialization_latency_ns,
+                    req.uplink_latency_ns,
+                    req.downlink_distance_latency_ns,
+                    req.downlink_serialization_latency_ns,
+                    req.downlink_latency_ns,
+                    req.communication_latency_ns,
+                    req.request_send_time_ns if req.request_send_time_ns is not None else -1,
+                    req.arrival,  # gpu_arrival_time_ns == req.arrival under the geographic workload format
+                    req.first_schedule_time_ns,
+                    req.first_token_ready_time_ns,
+                    req.first_token_received_time_ns,
+                    req.request_end_time_ns,
+                    req.queueing_before_ttft_ns,
+                    req.prefill_service_ns,
+                    req.ttft,  # simulator_ttft_ns == existing ttft (GPU-arrival to first-token-ready)
+                    req.e2e_ttft_ns,
+                    req.decode_queueing_ns,
+                    req.decode_active_ns,
+                    req.decode_after_ttft_ns,
+                    req.request_completion_latency_ns,
+                    req.ttft_bottleneck if req.ttft_bottleneck is not None else '',
+                    req.total_latency_bottleneck if req.total_latency_bottleneck is not None else '',
+                    req.communication_ratio,
+                    req.queueing_ratio,
+                    req.prefill_ratio,
+                    req.decode_ratio,
                 ])
 
 

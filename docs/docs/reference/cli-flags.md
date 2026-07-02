@@ -36,7 +36,7 @@ matching runtime knobs per `instances[i]`; see
 
 | Flag | Choices | Default | Description |
 | --- | --- | --- | --- |
-| `--request-routing-policy` | `LOAD` / `RR` / `RAND` / `CUSTOM` | `LOAD` | Cross-instance request routing |
+| `--request-routing-policy` | `LOAD` / `RR` / `RAND` / `PROMPT` / `QUEUE` / `HYBRID` / `CUSTOM` | `LOAD` | Cross-instance request routing |
 | `--expert-routing-policy` | `BALANCED` / `RR` / `RAND` / `CUSTOM` | `BALANCED` | MoE expert token routing |
 | `--enable-block-copy` | bool | `True` | Replay one block's trace across layers (set False for per-layer EP variance) |
 

@@ -219,9 +219,14 @@ def main():
                         help='model weight data type (vLLM-style). When omitted, defaults to the model config\'s '
                         '``torch_dtype`` (falling back to bfloat16). Overrides only take effect if the profiler '
                         'produced matching data under perf/<hw>/<model>/<variant>/tp<N>/')
-    parser.add_argument('--request-routing-policy', type=str, choices=['LOAD', 'RR', 'RAND', 'CUSTOM'], default='LOAD',
+    parser.add_argument('--request-routing-policy', type=str,
+                        choices=['LOAD', 'RR', 'RAND', 'PROMPT', 'QUEUE', 'HYBRID', 'CUSTOM', 'NEAREST'],
+                        default='LOAD',
                         help='request routing policy across instances: LOAD (vLLM-style weighted least-loaded, default), '
-                        'RR (round-robin), RAND (random), CUSTOM (user-defined)')
+                        'RR (round-robin), RAND (random), PROMPT (prompt length to token-budget fit), '
+                        'QUEUE (least queue pressure), HYBRID (prompt fit plus queue pressure), '
+                        'CUSTOM (user-defined), NEAREST (use the assigned_instance_id already computed by '
+                        'the geographic workload generator; no runtime reselection)')
     parser.add_argument('--expert-routing-policy', type=str,
                         choices=['BALANCED', 'RR', 'RAND', 'CUSTOM'],
                         default='BALANCED',
@@ -292,6 +297,25 @@ def main():
     parser.add_argument('--network-backend', type=str, choices=['analytical', 'ns3'], default='analytical',
                         help='network simulation backend: analytical (fast, default) or ns3 (detailed, WIP)')
 
+    # --- Geographic distributed-inference simulation (Phase 1) ---
+    parser.add_argument('--geographic-user-output', type=str, default=None,
+                        help='path for the per-user aggregate CSV (mean/p50/p95/p99 E2E TTFT, bottleneck counts, '
+                        'etc). Omit to skip geographic aggregation entirely (no effect on non-geographic runs)')
+    parser.add_argument('--geographic-gpu-output', type=str, default=None,
+                        help='path for the per-GPU aggregate CSV (request counts, latency percentiles, peak '
+                        'queue depth). Omit to skip')
+    parser.add_argument('--geographic-metadata-output', type=str, default=None,
+                        help='path for the geographic run metadata JSON (area/GPU/user config, definitions, git '
+                        'commit hash). Omit to skip')
+    parser.add_argument('--geographic-users-csv', type=str, default=None,
+                        help='static per-user placement CSV produced by `python -m workloads.generators '
+                        'geographic` (--users-output). Read-only input used to seed the full user roster '
+                        '(including senders of zero requests) for --geographic-user-output. If omitted, the '
+                        'user CSV only covers users that actually sent a routed request')
+    parser.add_argument('--geographic-gpus-csv', type=str, default=None,
+                        help='static per-GPU placement CSV produced by `python -m workloads.generators '
+                        'geographic` (--gpus-output). Read-only input for --geographic-gpu-output coordinates')
+
     args = parser.parse_args()
     
     args.run_id = resolve_run_id(args.run_id)
@@ -352,6 +376,10 @@ def main():
     if network_backend == 'analytical':
         network=run_paths.network_config
         binary=os.path.join(astra_sim, "build/astra_analytical/build/AnalyticalAstra/bin/AnalyticalAstra")
+        if not os.path.exists(binary):
+            binary=os.path.join(
+                astra_sim,
+                "build/astra_analytical/build/bin/AstraSim_Analytical_Congestion_Unaware")
     elif network_backend == 'ns3':
         network=_prepare_ns3_config(astra_sim, run_paths)
         binary=os.path.join(astra_sim, "extern/network_backend/ns-3/build/scratch/ns3.42-AstraSimNetwork-default")
@@ -1030,6 +1058,32 @@ def main():
         print(f"Saving each request's information to output file: {output_file}")
         for i in range(num_instances):
             schedulers[i].save_output(output_file, is_append=False if i == 0 else True)
+
+    # --- Geographic Phase 1: per-user / per-GPU aggregation + metadata ---
+    if args.geographic_user_output or args.geographic_gpu_output or args.geographic_metadata_output:
+        from serving.core import geo_report
+        users_static = geo_report.load_static_users(
+            _cluster_config_path(args.geographic_users_csv) if args.geographic_users_csv else None)
+        gpus_static = geo_report.load_static_gpus(
+            _cluster_config_path(args.geographic_gpus_csv) if args.geographic_gpus_csv else None)
+
+        if args.geographic_user_output:
+            user_rows = geo_report.aggregate_users(schedulers, users_static)
+            geo_report.write_user_csv(_cluster_config_path(args.geographic_user_output), user_rows)
+            print(f"Saving per-user geographic aggregates to: {args.geographic_user_output}")
+
+        if args.geographic_gpu_output:
+            gpu_rows = geo_report.aggregate_gpus(schedulers, gpus_static)
+            geo_report.write_gpu_csv(_cluster_config_path(args.geographic_gpu_output), gpu_rows)
+            print(f"Saving per-GPU geographic aggregates to: {args.geographic_gpu_output}")
+
+        if args.geographic_metadata_output:
+            geo_report.write_metadata(
+                _cluster_config_path(args.geographic_metadata_output), args, cluster,
+                len(users_static) if users_static else None,
+                len(gpus_static) if gpus_static else None,
+            )
+            print(f"Saving geographic run metadata to: {args.geographic_metadata_output}")
 
     if args.cleanup_inputs:
         _cleanup_inputs_root(run_paths, logger)
