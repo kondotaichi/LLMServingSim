@@ -1,7 +1,6 @@
 # AGENTS.md
 
 Guidelines for AI coding agents (Claude Code, Cursor, Copilot, etc.) working in this repository.
-これは日本語です
 
 ## Project Context
 
