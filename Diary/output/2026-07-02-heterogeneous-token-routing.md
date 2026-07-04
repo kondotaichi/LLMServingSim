@@ -245,3 +245,75 @@ for policy in policies:
     print("  assignments:", dict(sorted(assignments.items())))
 PY
 ```
+
+## 動的ワークロードでのTTFT内訳
+
+単独リクエストの実験ではTTFTのほとんどがprefill serviceだったが、
+複数ユーザ相当の動的ワークロードでは支配要因が変わる。以下では
+`TTFT` を主に `queueing_before_ttft_ns` と `prefill_service_ns` に分けて集計した。
+この実験では地理通信を入れていないため `communication_latency_ns` は0。
+
+### 実験1: mixed workload の内訳
+
+breakdown列が入るように、mixed workload は現在のコードで再実行した。
+
+出力CSV:
+
+- `results/hetero-routing-breakdown-RR.csv`
+- `results/hetero-routing-breakdown-PROMPT.csv`
+- `results/hetero-routing-breakdown-QUEUE.csv`
+- `results/hetero-routing-breakdown-HYBRID.csv`
+
+| Policy | 平均TTFT | P99 TTFT | 平均Queue | P99 Queue | 平均Prefill | P99 Prefill | Queue比率 | Prefill比率 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `RR` | 451.99ms | 1180.98ms | 302.90ms | 1020.75ms | 149.09ms | 517.51ms | 67.0% | 33.0% |
+| `PROMPT` | 340.40ms | 1553.13ms | 222.26ms | 1299.23ms | 118.14ms | 427.72ms | 65.3% | 34.7% |
+| `QUEUE` | 469.25ms | 1288.71ms | 322.25ms | 1209.54ms | 147.00ms | 517.51ms | 68.7% | 31.3% |
+| `HYBRID` | 335.23ms | 1554.17ms | 210.61ms | 1300.27ms | 124.62ms | 427.72ms | 62.8% | 37.2% |
+
+観察:
+
+- mixed workload でもTTFTの最大要因はqueue待ち。
+- 単独リクエストではprefillが支配的だったが、動的到着ではqueueが60%超を占める。
+- `PROMPT` / `HYBRID` は平均TTFTを下げる一方、4096/8192-tokenリクエストを
+  instance 3 に寄せるため、P99 queueが大きくなりtail TTFTは悪化する。
+
+### 実験2: long-heavy workload の内訳
+
+出力CSV:
+
+- `results/hetero-long-heavy-RR.csv`
+- `results/hetero-long-heavy-PROMPT.csv`
+- `results/hetero-long-heavy-QUEUE.csv`
+- `results/hetero-long-heavy-HYBRID.csv`
+
+| Policy | 平均TTFT | P99 TTFT | 平均Queue | P99 Queue | 平均Prefill | P99 Prefill | Queue比率 | Prefill比率 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `RR` | 1376.77ms | 3543.65ms | 1080.61ms | 3306.86ms | 296.16ms | 552.62ms | 78.5% | 21.5% |
+| `PROMPT` | 2190.56ms | 5906.88ms | 1914.81ms | 5580.21ms | 275.74ms | 456.75ms | 87.4% | 12.6% |
+| `QUEUE` | 1376.77ms | 3543.65ms | 1080.61ms | 3306.86ms | 296.16ms | 552.62ms | 78.5% | 21.5% |
+| `HYBRID` | 1359.15ms | 2743.37ms | 1059.74ms | 2607.85ms | 299.41ms | 557.88ms | 78.0% | 22.0% |
+
+観察:
+
+- long-heavy workload ではqueue待ちがさらに支配的で、平均TTFTの78%から87%を占める。
+- `PROMPT` は4096/8192-token requestをinstance 3へ集中させたため、平均queueが
+  1914.81ms、P99 queueが5580.21msまで悪化した。
+- `HYBRID` はqueue圧も見て8192-token requestを分散したため、P99 queueを2607.85msまで
+  下げ、P99 TTFTも2743.37msまで改善した。
+
+### 結論
+
+単独リクエストではTTFTはほぼprefill serviceで決まる。一方、複数ユーザから
+さまざまなプロンプト長が動的に送られる状況では、TTFTの支配要因はqueue待ちになる。
+
+したがってルーティングで重要なのは、単に「長いpromptを大きい
+`max_num_batched_tokens` に送る」ことではない。長いpromptを同じ大きいbudgetの
+インスタンスへ集めすぎるとqueue hotspotが発生し、prefill短縮分を上回ってTTFTが悪化する。
+
+動的ワークロードでは次のように考えるのが妥当。
+
+- 単独性能: 長いpromptには大きい `max_num_batched_tokens` が有利。
+- 動的性能: TTFTはqueue待ちに支配されるため、prompt長の適合だけでなくqueue圧の分散が必要。
+- `PROMPT` は単独性能の仮説を強く使いすぎてhotspotを作る。
+- `HYBRID` はprompt長適合とqueue圧分散の両方を見るため、long-heavyではtail TTFTを改善できた。

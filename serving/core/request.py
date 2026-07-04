@@ -9,7 +9,7 @@ def _argmax_label(pairs):
 
 # class that manages request of astra-sim
 class Request:
-    def __init__(self, id, model, input, output, arrival, instance_id, input_hash_ids=None, output_hash_ids=None, is_init=True, geo=None):
+    def __init__(self, id, model, input, output, arrival, instance_id, input_hash_ids=None, output_hash_ids=None, is_init=True, geo=None, failover=None):
         self.id = id
         self.model = model
         self.input = input  # Always keep original input length
@@ -75,6 +75,25 @@ class Request:
         self.downlink_latency_ns = geo.get('downlink_latency_ns', 0)
         self.communication_latency_ns = geo.get('communication_latency_ns', 0)
         self.request_send_time_ns = geo.get('request_send_time_ns')  # None => old-format workload
+
+        # --- NEAREST_REJECT capacity-aware routing (only set by that policy) ---
+        self.nearest_gpu_id = geo.get('nearest_gpu_id', geo.get('gpu_id'))
+        self.rerouted = geo.get('rerouted', 0)
+        self.reject_penalty_ns = geo.get('reject_penalty_ns', 0)
+
+        # --- KV-cache failover / migration simulation ---
+        failover = failover or {}
+        self.failover_mode = failover.get('failover_mode', '')
+        self.failed_instance_id = failover.get('failed_instance_id', '')
+        self.failover_target_instance_id = failover.get('target_instance_id', '')
+        self.reuse_prefix_toks = failover.get('reuse_prefix_toks', 0)
+        self.kv_migration_tokens = failover.get('kv_migration_tokens', 0)
+        self.kv_migration_bytes = failover.get('kv_migration_bytes', 0)
+        self.kv_migration_latency_ns = failover.get('kv_migration_latency_ns', 0)
+        self.kv_migration_distance_latency_ns = failover.get('kv_migration_distance_latency_ns', 0)
+        self.kv_migration_serialization_latency_ns = failover.get('kv_migration_serialization_latency_ns', 0)
+        self.kv_migration_bandwidth_gbps = failover.get('kv_migration_bandwidth_gbps', 0)
+        self.kv_migration_distance_m = failover.get('kv_migration_distance_m', 0)
 
         # --- Queueing / prefill / decode timing instrumentation ---
         self.first_schedule_time_ns = -1

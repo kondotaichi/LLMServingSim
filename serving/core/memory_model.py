@@ -150,6 +150,40 @@ class MemoryModel():
 
         # K & V multiply 2
         return 2 * self.kv_dim * seq * self.n_layer * self.kv_fp // self.num_npus
+
+    def seed_migrated_prefix(self, token_ids, prefix_len):
+        """Install a migrated prefix in this instance's NPU prefix cache.
+
+        This models KV-cache migration at block granularity. The simulator
+        stores prefix-cache metadata rather than real KV tensors, so migration
+        means pre-populating the destination radix tree and charging the caller
+        for the corresponding KV bytes on the inter-GPU link.
+        """
+        if not self.enable_prefix_caching:
+            raise RuntimeError("KV migration requires prefix caching on the target instance")
+        if token_ids is None:
+            token_ids = []
+        prefix_len = min(int(prefix_len), len(token_ids))
+        if prefix_len <= 0:
+            return 0
+
+        if self.block_size > 1:
+            prefix_len = prefix_len // self.block_size * self.block_size
+        if prefix_len <= 0:
+            return 0
+
+        need = self.get_kv(prefix_len)
+        if need > self.avail_size(Device.NPU):
+            self.evict_prefix_cache(need - self.avail_size(Device.NPU), Device.NPU)
+        if need > self.avail_size(Device.NPU):
+            raise RuntimeError(
+                f"[MemoryModel] [node={self.node_id},inst={self.instance_id}]: "
+                f"not enough NPU memory to seed migrated KV prefix of {prefix_len} tokens"
+            )
+
+        self.npu_prefix_cache.insert(token_ids[:prefix_len])
+        self.apply_kv_cache_events()
+        return prefix_len
     
     # get the total size of current kv cache for the request
     # used when adding prefilled request to decode instance.

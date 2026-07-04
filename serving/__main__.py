@@ -220,13 +220,17 @@ def main():
                         '``torch_dtype`` (falling back to bfloat16). Overrides only take effect if the profiler '
                         'produced matching data under perf/<hw>/<model>/<variant>/tp<N>/')
     parser.add_argument('--request-routing-policy', type=str,
-                        choices=['LOAD', 'RR', 'RAND', 'PROMPT', 'QUEUE', 'HYBRID', 'CUSTOM', 'NEAREST'],
+                        choices=['LOAD', 'RR', 'RAND', 'PROMPT', 'QUEUE', 'HYBRID', 'CUSTOM', 'NEAREST',
+                                 'NEAREST_REJECT'],
                         default='LOAD',
                         help='request routing policy across instances: LOAD (vLLM-style weighted least-loaded, default), '
                         'RR (round-robin), RAND (random), PROMPT (prompt length to token-budget fit), '
                         'QUEUE (least queue pressure), HYBRID (prompt fit plus queue pressure), '
                         'CUSTOM (user-defined), NEAREST (use the assigned_instance_id already computed by '
-                        'the geographic workload generator; no runtime reselection)')
+                        'the geographic workload generator; no runtime reselection), NEAREST_REJECT (like '
+                        'NEAREST, but if the nearest GPU has no free running slot, charge a capacity-check '
+                        'round trip to it and redirect unconditionally to the second-nearest GPU; requires '
+                        'second-nearest-GPU fields from the geographic workload generator)')
     parser.add_argument('--expert-routing-policy', type=str,
                         choices=['BALANCED', 'RR', 'RAND', 'CUSTOM'],
                         default='BALANCED',

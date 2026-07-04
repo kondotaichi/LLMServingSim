@@ -82,16 +82,23 @@ def _generate_gpus(rows: int, cols: int, width: float, height: float) -> list[tu
     return gpus
 
 
-def _nearest_gpu(user_xy: tuple[float, float], gpus: list[tuple[float, float]]) -> tuple[int, float]:
+def _two_nearest_gpus(user_xy: tuple[float, float], gpus: list[tuple[float, float]]) -> tuple[int, float, int, float]:
+    """Return (nearest_id, nearest_dist, second_nearest_id, second_nearest_dist).
+
+    Ties broken by GPU id ascending (stable sort on (distance, gpu_id)),
+    matching the original single-nearest tie-break rule.
+    """
     ux, uy = user_xy
-    best_id = 0
-    best_dist = math.inf
-    for gpu_id, (gx, gy) in enumerate(gpus):
-        d = math.sqrt((ux - gx) ** 2 + (uy - gy) ** 2)
-        if d < best_dist:
-            best_dist = d
-            best_id = gpu_id
-    return best_id, best_dist
+    ranked = sorted(
+        (math.sqrt((ux - gx) ** 2 + (uy - gy) ** 2), gpu_id)
+        for gpu_id, (gx, gy) in enumerate(gpus)
+    )
+    if len(ranked) < 2:
+        raise ValueError(
+            f"Need at least 2 GPUs to compute a second-nearest GPU (got {len(ranked)}); "
+            "increase --gpu-rows/--gpu-cols.")
+    (dist0, id0), (dist1, id1) = ranked[0], ranked[1]
+    return id0, dist0, id1, dist1
 
 
 # ---------------------------------------------------------------------------
@@ -150,8 +157,9 @@ def run(args: argparse.Namespace) -> int:
     gpus_xy = _generate_gpus(args.gpu_rows, args.gpu_cols, args.area_width_m, args.area_height_m)
     num_gpus = len(gpus_xy)
 
-    # Nearest GPU is fixed once user/GPU positions are fixed -- compute once.
-    nearest = [_nearest_gpu(xy, gpus_xy) for xy in users_xy]  # (gpu_id, dist_m) per user
+    # Nearest/second-nearest GPU are fixed once user/GPU positions are fixed -- compute once.
+    # (nearest_gpu_id, nearest_dist_m, second_nearest_gpu_id, second_nearest_dist_m) per user
+    nearest = [_two_nearest_gpus(xy, gpus_xy) for xy in users_xy]
 
     used_uniform_fallback = False
     weights = None
@@ -196,7 +204,7 @@ def run(args: argparse.Namespace) -> int:
             user_id = select_user(row)
             request_count[user_id] += 1
             ux, uy = users_xy[user_id]
-            gpu_id, distance_m = nearest[user_id]
+            gpu_id, distance_m, second_nearest_gpu_id, second_nearest_distance_m = nearest[user_id]
             gx, gy = gpus_xy[gpu_id]
 
             input_toks = int(row["input_toks"])
@@ -230,6 +238,8 @@ def run(args: argparse.Namespace) -> int:
                 "gpu_x_m": gx,
                 "gpu_y_m": gy,
                 "distance_m": distance_m,
+                "second_nearest_gpu_id": second_nearest_gpu_id,
+                "second_nearest_distance_m": second_nearest_distance_m,
 
                 "network_throughput_mbps": args.network_throughput_mbps,
                 "distance_latency_ns_per_meter": args.distance_latency_ns_per_meter,
@@ -257,13 +267,14 @@ def run(args: argparse.Namespace) -> int:
     with users_out_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["user_id", "user_x_m", "user_y_m", "request_weight", "request_probability",
-                          "assigned_gpu_id", "distance_to_gpu_m"])
+                          "assigned_gpu_id", "distance_to_gpu_m",
+                          "second_nearest_gpu_id", "second_nearest_distance_m"])
         for uid in range(num_users):
             ux, uy = users_xy[uid]
-            gpu_id, dist = nearest[uid]
+            gpu_id, dist, second_gpu_id, second_dist = nearest[uid]
             w = weights[uid] if weights is not None else ""
             prob = (weights[uid] / weight_sum) if (weights is not None and weight_sum > 0) else ""
-            writer.writerow([uid, ux, uy, w, prob, gpu_id, dist])
+            writer.writerow([uid, ux, uy, w, prob, gpu_id, dist, second_gpu_id, second_dist])
 
     # --- static GPUs CSV ---
     with gpus_out_path.open("w", encoding="utf-8", newline="") as f:

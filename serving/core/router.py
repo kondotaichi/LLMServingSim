@@ -3,6 +3,10 @@ import json
 import random
 from .logger import get_logger
 
+DEFAULT_KV_MIGRATION_BANDWIDTH_GBPS = 100.0
+DEFAULT_KV_MIGRATION_DISTANCE_M = 10_000.0
+DEFAULT_DISTANCE_LATENCY_NS_PER_M = 5.0
+
 
 # Geographic/communication fields written by
 # `python -m workloads.generators geographic` (Phase 1 spec section 20/22.3).
@@ -10,6 +14,7 @@ from .logger import get_logger
 _GEO_FIELDS = (
     'user_id', 'user_x_m', 'user_y_m',
     'gpu_id', 'gpu_x_m', 'gpu_y_m', 'distance_m', 'assigned_instance_id',
+    'second_nearest_gpu_id', 'second_nearest_distance_m', 'distance_latency_ns_per_meter',
     'network_throughput_mbps',
     'request_payload_bytes', 'first_token_payload_bytes',
     'uplink_distance_latency_ns', 'uplink_serialization_latency_ns', 'uplink_latency_ns',
@@ -77,9 +82,12 @@ class Router:
             self._select_instance = self._custom_select
         elif self.routing_policy == "NEAREST":
             self._select_instance = self._nearest_select
+        elif self.routing_policy == "NEAREST_REJECT":
+            self._select_instance = self._nearest_select
         else:
             raise ValueError(f"Unknown routing_policy '{routing_policy}'. "
-                             "Supported: RR, RAND, LOAD, PROMPT, QUEUE, HYBRID, CUSTOM, NEAREST")
+                             "Supported: RR, RAND, LOAD, PROMPT, QUEUE, HYBRID, CUSTOM, NEAREST, "
+                             "NEAREST_REJECT")
         self.logger = get_logger(self.__class__)
 
     # -----------------------------------------------------------------------
@@ -229,6 +237,107 @@ class Router:
             f"{[s.instance_id for s in schedulers]})."
         )
 
+    @staticmethod
+    def _find_scheduler(schedulers, instance_id):
+        for sched in schedulers:
+            if sched.instance_id == instance_id:
+                return sched
+        return None
+
+    @staticmethod
+    def _find_scheduler_index(schedulers, instance_id):
+        for idx, sched in enumerate(schedulers):
+            if sched.instance_id == instance_id:
+                return idx
+        return None
+
+    @staticmethod
+    def _has_capacity(sched):
+        """True if the instance has a free running slot right now.
+
+        Mirrors the admission check `Scheduler` itself uses each iteration
+        (`available_slots = max_num_seqs - running_reqs`); a request that
+        can't fit here would otherwise just wait in `sched.request` (vLLM-style
+        unbounded FIFO wait queue). NEAREST_REJECT treats "no free slot" as a
+        capacity rejection instead of a queueing wait.
+        """
+        running_reqs = sum(len(b.requests) for b in sched.inflight)
+        return running_reqs < sched.max_num_seqs
+
+    def _maybe_reject_and_redirect(self, req_data, current_time_ns):
+        """NEAREST_REJECT: check the nearest GPU's capacity; if full, charge a
+        capacity-check round trip to it and redirect to the second-nearest
+        GPU, which is accepted unconditionally (resolved at most once per
+        request -- no cascading rejection to a third-nearest GPU).
+
+        Modeling assumption: the capacity check itself is a lightweight
+        probe (round-trip propagation delay only, no payload serialization)
+        since admission here only depends on a running-slot count, not on
+        the request's content. The actual accepted request to the
+        second-nearest GPU pays full uplink+downlink (distance +
+        serialization) like a normal request.
+
+        Returns True if the request was deferred (arrival time pushed back
+        and the caller must reinsert it into the pending queue instead of
+        routing it now); False if it was accepted at the nearest GPU as-is.
+        """
+        geo = req_data.get('geo')
+        if geo is None or 'assigned_instance_id' not in req_data:
+            raise RuntimeError(
+                "NEAREST_REJECT routing policy requires a geographic workload "
+                "with second-nearest-GPU fields (generate it with "
+                "`python -m workloads.generators geographic`)."
+            )
+
+        geo.setdefault('nearest_gpu_id', geo.get('gpu_id'))
+
+        nearest_instance_id = req_data['assigned_instance_id']
+        sched = self._find_scheduler(self.prefill_schedulers, nearest_instance_id)
+        if sched is None:
+            raise RuntimeError(
+                f"NEAREST_REJECT routing: assigned_instance_id {nearest_instance_id} "
+                f"does not match any available prefill instance."
+            )
+
+        if self._has_capacity(sched):
+            return False
+
+        nearest_distance_m = float(geo['distance_m'])
+        second_gpu_id = int(geo['second_nearest_gpu_id'])
+        second_distance_m = float(geo['second_nearest_distance_m'])
+        per_meter_ns = float(geo['distance_latency_ns_per_meter'])
+        mbps = float(geo['network_throughput_mbps'])
+        request_payload_bytes = float(geo['request_payload_bytes'])
+        first_token_payload_bytes = float(geo['first_token_payload_bytes'])
+
+        reject_penalty_ns = round(2 * nearest_distance_m * per_meter_ns)
+
+        uplink_distance_ns = round(second_distance_m * per_meter_ns)
+        uplink_serialization_ns = round(8000.0 * request_payload_bytes / mbps)
+        uplink_latency_ns = uplink_distance_ns + uplink_serialization_ns
+
+        downlink_distance_ns = uplink_distance_ns
+        downlink_serialization_ns = round(8000.0 * first_token_payload_bytes / mbps)
+        downlink_latency_ns = downlink_distance_ns + downlink_serialization_ns
+
+        geo.update({
+            'gpu_id': second_gpu_id,
+            'distance_m': second_distance_m,
+            'uplink_distance_latency_ns': uplink_distance_ns,
+            'uplink_serialization_latency_ns': uplink_serialization_ns,
+            'uplink_latency_ns': uplink_latency_ns,
+            'downlink_distance_latency_ns': downlink_distance_ns,
+            'downlink_serialization_latency_ns': downlink_serialization_ns,
+            'downlink_latency_ns': downlink_latency_ns,
+            'communication_latency_ns': reject_penalty_ns + uplink_latency_ns + downlink_latency_ns,
+            'rerouted': 1,
+            'reject_penalty_ns': reject_penalty_ns,
+        })
+        req_data['assigned_instance_id'] = second_gpu_id
+        req_data['arrival_time_ns'] = current_time_ns + reject_penalty_ns + uplink_latency_ns
+        req_data['_reject_resolved'] = True
+        return True
+
     # -----------------------------------------------------------------------
     # Request loading and real-time routing
     # -----------------------------------------------------------------------
@@ -273,6 +382,7 @@ class Router:
         """Load a single flat request into pending queue."""
         req_id = self._next_request_id
         self._next_request_id += 1
+        failover = self._extract_failover_fields(row)
         req_data = {
             'index': req_id,
             'input_toks': int(row['input_toks']),
@@ -280,14 +390,98 @@ class Router:
             'arrival_time_ns': int(row['arrival_time_ns']),
         }
         if enable_prefix_caching:
-            req_data['input_hash_ids'] = row.get('input_tok_ids', [])
+            input_hash_ids = row.get('input_tok_ids', [])
+            if failover and failover.get('failover_mode') == 'migrate_kv' and not input_hash_ids:
+                input_hash_ids = list(range(int(row['input_toks'])))
+            req_data['input_hash_ids'] = input_hash_ids
             req_data['output_hash_ids'] = row.get('output_tok_ids', [])
         if 'assigned_instance_id' in row:
             req_data['assigned_instance_id'] = int(row['assigned_instance_id'])
+        if failover:
+            req_data['failover'] = failover
         geo = _extract_geo_fields(row)
         if geo is not None:
             req_data['geo'] = geo
         self._pending_requests.append(req_data)
+
+    def _extract_failover_fields(self, row):
+        mode = row.get('failover_mode')
+        if mode is None:
+            return None
+        mode = str(mode).lower()
+        if mode not in ('cold', 'migrate_kv'):
+            raise ValueError(f"Unknown failover_mode '{mode}'. Supported: cold, migrate_kv")
+        target = row.get('target_instance_id', row.get('failover_target_instance_id'))
+        if target is None:
+            raise ValueError("failover workloads require target_instance_id")
+        failover = {
+            'failover_mode': mode,
+            'target_instance_id': int(target),
+            'failed_instance_id': row.get('failed_instance_id', row.get('source_instance_id', '')),
+            'reuse_prefix_toks': int(row.get('reuse_prefix_toks', 0)),
+            'kv_migration_bandwidth_gbps': float(row.get(
+                'kv_migration_bandwidth_gbps',
+                DEFAULT_KV_MIGRATION_BANDWIDTH_GBPS,
+            )),
+            'kv_migration_distance_m': float(row.get(
+                'kv_migration_distance_m',
+                DEFAULT_KV_MIGRATION_DISTANCE_M,
+            )),
+            'distance_latency_ns_per_meter': float(row.get(
+                'distance_latency_ns_per_meter',
+                DEFAULT_DISTANCE_LATENCY_NS_PER_M,
+            )),
+        }
+        return failover
+
+    def _apply_kv_migration_if_needed(self, req_data, sched):
+        failover = req_data.get('failover')
+        if not failover:
+            return
+        if failover.get('failover_mode') == 'cold':
+            geo = dict(req_data.get('geo') or {})
+            geo.setdefault('communication_latency_ns', 0)
+            geo.setdefault('request_send_time_ns', int(req_data['arrival_time_ns']))
+            req_data['geo'] = geo
+            return
+        if failover.get('failover_mode') != 'migrate_kv':
+            return
+        if failover.get('_kv_migration_applied', False):
+            return
+        if not sched.enable_prefix_caching:
+            raise RuntimeError("failover_mode=migrate_kv requires --enable-prefix-caching")
+
+        input_hash_ids = req_data.get('input_hash_ids', [])
+        if not input_hash_ids:
+            input_hash_ids = list(range(int(req_data['input_toks'])))
+            req_data['input_hash_ids'] = input_hash_ids
+
+        requested_prefix = int(failover.get('reuse_prefix_toks', 0))
+        migrated_tokens = sched.memory.seed_migrated_prefix(input_hash_ids, requested_prefix)
+        migration_bytes = sched.memory.get_kv(migrated_tokens) * sched.num_npus
+        bandwidth_mbps = float(failover['kv_migration_bandwidth_gbps']) * 1000.0
+        serialization_ns = round(8000.0 * migration_bytes / bandwidth_mbps) if bandwidth_mbps > 0 else 0
+        distance_ns = round(
+            float(failover['kv_migration_distance_m']) *
+            float(failover['distance_latency_ns_per_meter'])
+        )
+        migration_ns = distance_ns + serialization_ns
+
+        original_arrival = int(req_data['arrival_time_ns'])
+        req_data['arrival_time_ns'] = original_arrival + migration_ns
+        failover.update({
+            '_kv_migration_applied': True,
+            'kv_migration_tokens': migrated_tokens,
+            'kv_migration_bytes': migration_bytes,
+            'kv_migration_latency_ns': migration_ns,
+            'kv_migration_distance_latency_ns': distance_ns,
+            'kv_migration_serialization_latency_ns': serialization_ns,
+        })
+
+        geo = dict(req_data.get('geo') or {})
+        geo['communication_latency_ns'] = geo.get('communication_latency_ns', 0) + migration_ns
+        geo.setdefault('request_send_time_ns', original_arrival)
+        req_data['geo'] = geo
 
     def _load_agentic_session(self, row, enable_prefix_caching):
         """Load an agentic session: first sub-request to pending, rest deferred."""
@@ -336,8 +530,30 @@ class Router:
             if req_data['arrival_time_ns'] > current_time_ns:
                 break
 
-            instance_id = self._select_instance(self.prefill_schedulers, "prefill", req_data)
+            if self.routing_policy == "NEAREST_REJECT" and not req_data.get('_reject_resolved', False):
+                if self._maybe_reject_and_redirect(req_data, current_time_ns):
+                    # Arrival time pushed back to account for the capacity-check
+                    # round trip + redirect; reinsert in sorted order and retry
+                    # later instead of routing it now.
+                    self._pending_requests.pop(self._pending_idx)
+                    self._insert_pending_sorted(req_data)
+                    continue
+
+            failover = req_data.get('failover')
+            if failover and 'target_instance_id' in failover:
+                instance_id = self._find_scheduler_index(
+                    self.prefill_schedulers,
+                    failover['target_instance_id'],
+                )
+                if instance_id is None:
+                    raise RuntimeError(
+                        f"failover target_instance_id {failover['target_instance_id']} "
+                        f"does not match any available prefill instance"
+                    )
+            else:
+                instance_id = self._select_instance(self.prefill_schedulers, "prefill", req_data)
             sched = self.prefill_schedulers[instance_id]
+            self._apply_kv_migration_if_needed(req_data, sched)
             geo = req_data.get('geo')
 
             if sched.enable_prefix_caching:
@@ -346,13 +562,13 @@ class Router:
                     req_data['input_toks'], req_data['output_toks'],
                     req_data['arrival_time_ns'], sched.instance_id,
                     req_data.get('input_hash_ids', []), req_data.get('output_hash_ids', []),
-                ], is_init=self._is_init, geo=geo)
+                ], is_init=self._is_init, geo=geo, failover=req_data.get('failover'))
             else:
                 sched.add_request([
                     req_data['index'], sched.model,
                     req_data['input_toks'], req_data['output_toks'],
                     req_data['arrival_time_ns'], sched.instance_id,
-                ], is_init=self._is_init, geo=geo)
+                ], is_init=self._is_init, geo=geo, failover=req_data.get('failover'))
 
             self._pending_idx += 1
             routed += 1

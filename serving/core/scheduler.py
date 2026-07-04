@@ -840,8 +840,8 @@ class Scheduler:
         return self.batch_ids
 
     # add a request
-    def add_request(self, req, is_init=True, geo=None):
-        new_req = Request(*(req), is_init=is_init, geo=geo)
+    def add_request(self, req, is_init=True, geo=None, failover=None):
+        new_req = Request(*(req), is_init=is_init, geo=geo, failover=failover)
         # Maintain arrival-time sort order (required by schedule_base/schedule_with_prefix)
         bisect.insort(self.request, new_req, key=lambda r: (r.arrival, r.id))
         return
@@ -983,7 +983,15 @@ class Scheduler:
                                 'decode_queueing_ns', 'decode_active_ns', 'decode_after_ttft_ns',
                                 'request_completion_latency_ns',
                                 'ttft_bottleneck', 'total_latency_bottleneck',
-                                'communication_ratio', 'queueing_ratio', 'prefill_ratio', 'decode_ratio'])
+                                'communication_ratio', 'queueing_ratio', 'prefill_ratio', 'decode_ratio',
+                                # --- NEAREST_REJECT capacity-aware routing (0/blank for other policies) ---
+                                'nearest_gpu_id', 'rerouted', 'reject_penalty_ns',
+                                # --- KV-cache failover / migration ---
+                                'failover_mode', 'failed_instance_id', 'failover_target_instance_id',
+                                'reuse_prefix_toks', 'kv_migration_tokens', 'kv_migration_bytes',
+                                'kv_migration_latency_ns', 'kv_migration_distance_latency_ns',
+                                'kv_migration_serialization_latency_ns',
+                                'kv_migration_bandwidth_gbps', 'kv_migration_distance_m'])
 
             # Write each request's information
             for req in self.done:
@@ -1038,6 +1046,20 @@ class Scheduler:
                     req.queueing_ratio,
                     req.prefill_ratio,
                     req.decode_ratio,
+                    req.nearest_gpu_id if req.nearest_gpu_id is not None else '',
+                    req.rerouted,
+                    req.reject_penalty_ns,
+                    req.failover_mode,
+                    req.failed_instance_id,
+                    req.failover_target_instance_id,
+                    req.reuse_prefix_toks,
+                    req.kv_migration_tokens,
+                    req.kv_migration_bytes,
+                    req.kv_migration_latency_ns,
+                    req.kv_migration_distance_latency_ns,
+                    req.kv_migration_serialization_latency_ns,
+                    req.kv_migration_bandwidth_gbps,
+                    req.kv_migration_distance_m,
                 ])
 
 

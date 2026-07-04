@@ -28,9 +28,48 @@ Every line is one independent request:
 | `arrival_time_ns` | int | ✓ | When the request arrives in nanoseconds (relative to start of simulation) |
 | `input_tok_ids` | list&lt;int&gt; | optional | Pre-tokenized prompt IDs (enables prefix-cache hashing, see [below](#why-token-ids-matter)) |
 | `output_tok_ids` | list&lt;int&gt; | optional | Pre-tokenized output IDs (used internally for output-side analysis; usually fine to omit) |
+| `failover_mode` | `cold` / `migrate_kv` | optional | Force this request onto a failover target. `cold` recomputes the prompt; `migrate_kv` seeds the target prefix cache before scheduling |
+| `target_instance_id` | int | required with `failover_mode` | Instance that receives the failover request |
+| `failed_instance_id` | int | optional | Instance that previously held the KV cache. Informational in the current model |
+| `reuse_prefix_toks` | int | optional | Prompt-prefix tokens whose KV cache should be migrated in `migrate_kv` mode |
+| `kv_migration_bandwidth_gbps` | float | optional | GPU-to-GPU KV migration bandwidth. Defaults to `100` |
+| `kv_migration_distance_m` | float | optional | GPU-to-GPU distance. Defaults to `10000` |
 
 If `input_tok_ids` is provided, `len(input_tok_ids)` must equal
 `input_toks` (same for output).
+
+### KV failover fields
+
+Failover fields model a request whose reusable prefix KV cache was
+on another instance before the request arrived. They are useful for
+comparing cold recomputation against migrating cached KV blocks:
+
+```json
+{
+  "input_toks": 1152,
+  "output_toks": 16,
+  "arrival_time_ns": 0,
+  "input_tok_ids": [0, 1, 2, "..."],
+  "failover_mode": "migrate_kv",
+  "failed_instance_id": 0,
+  "target_instance_id": 1,
+  "reuse_prefix_toks": 1024
+}
+```
+
+`migrate_kv` pre-populates the target instance's NPU prefix cache
+with `reuse_prefix_toks` tokens, rounded down to the NPU block size,
+then delays GPU arrival by:
+
+```text
+distance_m * 5ns + kv_bytes * 8000 / bandwidth_mbps
+```
+
+The default link is 100Gbps over 10km. The simulator stores KV cache
+metadata rather than real tensors, so this models the block footprint
+and transfer delay, not byte-level tensor contents. Use `cold` with
+the same `target_instance_id` to force recomputation on the failover
+GPU without seeding the prefix cache.
 
 ### When to use flat
 
