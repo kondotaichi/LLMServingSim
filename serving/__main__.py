@@ -219,18 +219,43 @@ def main():
                         help='model weight data type (vLLM-style). When omitted, defaults to the model config\'s '
                         '``torch_dtype`` (falling back to bfloat16). Overrides only take effect if the profiler '
                         'produced matching data under perf/<hw>/<model>/<variant>/tp<N>/')
+    # >>> SPEC: redirect-on-capacity routing (queue-vs-redirect experiment) -----
+    # Base (pre-spec) had only LOAD/RR/RAND/PROMPT/QUEUE/HYBRID/CUSTOM/NEAREST
+    # in `choices` and no --gpu-backbone-* flags. NEAREST_REJECT (UE resend /
+    # "ue_retry"), NEAREST_KV (nearest-GPU local KV reuse), NEAREST_MIGRATE
+    # (GPU-to-GPU handoff / "gpu_forward"), and NEAREST_MIGRATE_KV (same
+    # handoff plus reusable prefix KV transfer) were added to reproduce
+    # redirect modes from the spec. See
+    # Diary/code/2026-07-03-nearest-reject-capacity-routing.md and
+    # Diary/implementation/20260705_experiment_1.md.
     parser.add_argument('--request-routing-policy', type=str,
                         choices=['LOAD', 'RR', 'RAND', 'PROMPT', 'QUEUE', 'HYBRID', 'CUSTOM', 'NEAREST',
-                                 'NEAREST_REJECT'],
+                                 'NEAREST_KV', 'NEAREST_REJECT', 'NEAREST_MIGRATE', 'NEAREST_MIGRATE_KV'],
                         default='LOAD',
                         help='request routing policy across instances: LOAD (vLLM-style weighted least-loaded, default), '
                         'RR (round-robin), RAND (random), PROMPT (prompt length to token-budget fit), '
                         'QUEUE (least queue pressure), HYBRID (prompt fit plus queue pressure), '
                         'CUSTOM (user-defined), NEAREST (use the assigned_instance_id already computed by '
-                        'the geographic workload generator; no runtime reselection), NEAREST_REJECT (like '
-                        'NEAREST, but if the nearest GPU has no free running slot, charge a capacity-check '
+                        'the geographic workload generator; no runtime reselection), NEAREST_KV (like '
+                        'NEAREST, but when the row has reuse_prefix_toks, seed that reusable prefix KV cache '
+                        'on the nearest GPU without transfer latency), NEAREST_REJECT (like NEAREST, but if '
+                        'the nearest GPU has no free running slot, charge a capacity-check '
                         'round trip to it and redirect unconditionally to the second-nearest GPU; requires '
-                        'second-nearest-GPU fields from the geographic workload generator)')
+                        'second-nearest-GPU fields from the geographic workload generator), NEAREST_MIGRATE '
+                        '(like NEAREST, but if the nearest GPU has no free running slot, forward the request '
+                        'over the GPU-to-GPU backbone link (--gpu-backbone-bandwidth-gbps / '
+                        '--gpu-backbone-distance-m) to the second-nearest GPU instead of queueing; the UE<->GPU '
+                        'uplink already happened so no UE round trip is charged, only the backbone hop), '
+                        'NEAREST_MIGRATE_KV (same as NEAREST_MIGRATE, but when the row has reuse_prefix_toks, '
+                        'also transfer and seed that reusable prefix KV cache on the target GPU)')
+    parser.add_argument('--gpu-backbone-bandwidth-gbps', type=float, default=None,
+                        help='GPU-to-GPU backbone link bandwidth in Gbps, used by NEAREST_MIGRATE and '
+                        'NEAREST_MIGRATE_KV for the inter-GPU request forward (distinct from the UE<->GPU '
+                        'access link bandwidth baked into the geographic workload)')
+    parser.add_argument('--gpu-backbone-distance-m', type=float, default=None,
+                        help='GPU-to-GPU backbone physical distance in meters, used by NEAREST_MIGRATE and '
+                        'NEAREST_MIGRATE_KV (distinct from the UE<->GPU distances in the geographic workload)')
+    # <<< SPEC: redirect-on-capacity routing (CLI flags) -----------------------
     parser.add_argument('--expert-routing-policy', type=str,
                         choices=['BALANCED', 'RR', 'RAND', 'CUSTOM'],
                         default='BALANCED',
@@ -498,7 +523,11 @@ def main():
     # Controller for astra-sim process communication
     controller = Controller(total_npu)
     # Global Request Router
-    router = Router(num_instances, schedulers, num_req, request_routing_policy)
+    # SPEC: base call was `Router(num_instances, schedulers, num_req, request_routing_policy)`;
+    # the two gpu_backbone_* kwargs feed NEAREST_MIGRATE and NEAREST_MIGRATE_KV (see router.py).
+    router = Router(num_instances, schedulers, num_req, request_routing_policy,
+                    gpu_backbone_bandwidth_gbps=args.gpu_backbone_bandwidth_gbps,
+                    gpu_backbone_distance_m=args.gpu_backbone_distance_m)
     # Power Modeling if enabled
     if power_modeling:
         power_model = PowerModel(power_configs)

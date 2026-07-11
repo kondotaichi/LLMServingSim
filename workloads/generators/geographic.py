@@ -55,6 +55,13 @@ def register_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--protocol-overhead-bytes", dest="protocol_overhead_bytes", type=float, default=500.0)
     p.add_argument("--bytes-per-input-token", dest="bytes_per_input_token", type=float, default=4.0)
     p.add_argument("--first-token-payload-bytes", dest="first_token_payload_bytes", type=float, default=100.0)
+    p.add_argument("--kv-reuse-prefix-toks", dest="kv_reuse_prefix_toks", type=int, default=0,
+                    help="If > 0, add reuse_prefix_toks=min(value, input_toks) to each output row for "
+                    "NEAREST_MIGRATE_KV experiments.")
+    p.add_argument("--kv-migration-bandwidth-gbps", dest="kv_migration_bandwidth_gbps", type=float, default=None,
+                    help="Optional per-row KV migration bandwidth override for NEAREST_MIGRATE_KV.")
+    p.add_argument("--kv-migration-distance-m", dest="kv_migration_distance_m", type=float, default=None,
+                    help="Optional per-row KV migration distance override for NEAREST_MIGRATE_KV.")
 
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--allow-uniform-user-fallback", dest="allow_uniform_user_fallback",
@@ -82,6 +89,11 @@ def _generate_gpus(rows: int, cols: int, width: float, height: float) -> list[tu
     return gpus
 
 
+# >>> SPEC: redirect-on-capacity routing. Base had `_nearest_gpu(user_xy, gpus)
+# -> (best_id, best_dist)` (single nearest only, plain loop with `<` updates).
+# Replaced with a ranked sort so the second-nearest GPU (needed by
+# NEAREST_REJECT/NEAREST_MIGRATE in serving/core/router.py) falls out for
+# free, with the same tie-break behavior as before.
 def _two_nearest_gpus(user_xy: tuple[float, float], gpus: list[tuple[float, float]]) -> tuple[int, float, int, float]:
     """Return (nearest_id, nearest_dist, second_nearest_id, second_nearest_dist).
 
@@ -99,6 +111,7 @@ def _two_nearest_gpus(user_xy: tuple[float, float], gpus: list[tuple[float, floa
             "increase --gpu-rows/--gpu-cols.")
     (dist0, id0), (dist1, id1) = ranked[0], ranked[1]
     return id0, dist0, id1, dist1
+# <<< SPEC: redirect-on-capacity routing
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +172,8 @@ def run(args: argparse.Namespace) -> int:
 
     # Nearest/second-nearest GPU are fixed once user/GPU positions are fixed -- compute once.
     # (nearest_gpu_id, nearest_dist_m, second_nearest_gpu_id, second_nearest_dist_m) per user
+    # SPEC: base line was `nearest = [_nearest_gpu(xy, gpus_xy) for xy in users_xy]`
+    # returning only (gpu_id, dist_m); now 4-tuples via _two_nearest_gpus().
     nearest = [_two_nearest_gpus(xy, gpus_xy) for xy in users_xy]
 
     used_uniform_fallback = False
@@ -204,6 +219,7 @@ def run(args: argparse.Namespace) -> int:
             user_id = select_user(row)
             request_count[user_id] += 1
             ux, uy = users_xy[user_id]
+            # SPEC: base line was `gpu_id, distance_m = nearest[user_id]`.
             gpu_id, distance_m, second_nearest_gpu_id, second_nearest_distance_m = nearest[user_id]
             gx, gy = gpus_xy[gpu_id]
 
@@ -238,6 +254,8 @@ def run(args: argparse.Namespace) -> int:
                 "gpu_x_m": gx,
                 "gpu_y_m": gy,
                 "distance_m": distance_m,
+                # SPEC: these 2 fields are new — consumed by NEAREST_REJECT/
+                # NEAREST_MIGRATE in serving/core/router.py.
                 "second_nearest_gpu_id": second_nearest_gpu_id,
                 "second_nearest_distance_m": second_nearest_distance_m,
 
@@ -260,10 +278,18 @@ def run(args: argparse.Namespace) -> int:
                 "gpu_arrival_time_ns": gpu_arrival_time_ns,
                 "arrival_time_ns": gpu_arrival_time_ns,  # overwritten: existing Router reads this as GPU arrival
             })
+            if args.kv_reuse_prefix_toks > 0:
+                out_row["reuse_prefix_toks"] = min(args.kv_reuse_prefix_toks, input_toks)
+            if args.kv_migration_bandwidth_gbps is not None:
+                out_row["kv_migration_bandwidth_gbps"] = args.kv_migration_bandwidth_gbps
+            if args.kv_migration_distance_m is not None:
+                out_row["kv_migration_distance_m"] = args.kv_migration_distance_m
             f_out.write(json.dumps(out_row, ensure_ascii=False) + "\n")
             written += 1
 
     # --- static users CSV (all num_users rows, including senders of zero requests) ---
+    # SPEC: the 2 "second_nearest_*" columns/values below are new (base header
+    # ended at "distance_to_gpu_m", base unpack was `gpu_id, dist = nearest[uid]`).
     with users_out_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["user_id", "user_x_m", "user_y_m", "request_weight", "request_probability",
@@ -314,6 +340,9 @@ def run(args: argparse.Namespace) -> int:
         "protocol_overhead_bytes": args.protocol_overhead_bytes,
         "bytes_per_input_token": args.bytes_per_input_token,
         "first_token_payload_bytes": args.first_token_payload_bytes,
+        "kv_reuse_prefix_toks": args.kv_reuse_prefix_toks,
+        "kv_migration_bandwidth_gbps": args.kv_migration_bandwidth_gbps,
+        "kv_migration_distance_m": args.kv_migration_distance_m,
         "input_workload": str(in_path),
         "output_workload": str(out_path),
         "users_output": str(users_out_path),

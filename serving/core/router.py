@@ -14,6 +14,9 @@ DEFAULT_DISTANCE_LATENCY_NS_PER_M = 5.0
 _GEO_FIELDS = (
     'user_id', 'user_x_m', 'user_y_m',
     'gpu_id', 'gpu_x_m', 'gpu_y_m', 'distance_m', 'assigned_instance_id',
+    # SPEC: these 3 fields are new (redirect-on-capacity routing) — read from
+    # the geographic workload's per-request row via _two_nearest_gpus() in
+    # workloads/generators/geographic.py, needed by NEAREST_REJECT/NEAREST_MIGRATE.
     'second_nearest_gpu_id', 'second_nearest_distance_m', 'distance_latency_ns_per_meter',
     'network_throughput_mbps',
     'request_payload_bytes', 'first_token_payload_bytes',
@@ -40,8 +43,15 @@ class Router:
             num_instances,
             schedulers, req_num,
             routing_policy="RR",
-            seed=42
+            seed=42,
+            # SPEC: these 2 kwargs are new (base signature ended at `seed=42`).
+            # Only consumed by NEAREST_MIGRATE's GPU-to-GPU backbone forward.
+            gpu_backbone_bandwidth_gbps=None,
+            gpu_backbone_distance_m=None,
     ):
+        # SPEC: stored for NEAREST_MIGRATE (see _maybe_migrate_and_redirect below).
+        self.gpu_backbone_bandwidth_gbps = gpu_backbone_bandwidth_gbps
+        self.gpu_backbone_distance_m = gpu_backbone_distance_m
         self.schedulers = schedulers
         self.num_instances = num_instances
         self.prefill_schedulers = [s for s in schedulers if s.pd_type != "decode"]
@@ -82,12 +92,23 @@ class Router:
             self._select_instance = self._custom_select
         elif self.routing_policy == "NEAREST":
             self._select_instance = self._nearest_select
+        elif self.routing_policy == "NEAREST_KV":
+            self._select_instance = self._nearest_select
+        # >>> SPEC: redirect-on-capacity routing — base only had "NEAREST" above.
+        # Both new policies reuse _nearest_select for the *baseline* instance
+        # pick; the redirect decision itself happens earlier, in
+        # route_arrived_requests(), before _select_instance is ever called.
         elif self.routing_policy == "NEAREST_REJECT":
             self._select_instance = self._nearest_select
+        elif self.routing_policy == "NEAREST_MIGRATE":
+            self._select_instance = self._nearest_select
+        elif self.routing_policy == "NEAREST_MIGRATE_KV":
+            self._select_instance = self._nearest_select
+        # <<< SPEC: redirect-on-capacity routing
         else:
             raise ValueError(f"Unknown routing_policy '{routing_policy}'. "
                              "Supported: RR, RAND, LOAD, PROMPT, QUEUE, HYBRID, CUSTOM, NEAREST, "
-                             "NEAREST_REJECT")
+                             "NEAREST_KV, NEAREST_REJECT, NEAREST_MIGRATE, NEAREST_MIGRATE_KV")
         self.logger = get_logger(self.__class__)
 
     # -----------------------------------------------------------------------
@@ -237,6 +258,13 @@ class Router:
             f"{[s.instance_id for s in schedulers]})."
         )
 
+    # >>> SPEC: redirect-on-capacity routing — everything from here down to the
+    # "Request loading and real-time routing" section header is new (base
+    # router.py ended the instance-selection-policies section at
+    # `_nearest_select` above). See Diary/code/2026-07-03-nearest-reject-
+    # capacity-routing.md (NEAREST_REJECT) and Diary/implementation/
+    # 20260705_experiment_1.md (NEAREST_MIGRATE) for the full design writeup.
+
     @staticmethod
     def _find_scheduler(schedulers, instance_id):
         for sched in schedulers:
@@ -338,6 +366,142 @@ class Router:
         req_data['_reject_resolved'] = True
         return True
 
+    def _maybe_migrate_and_redirect(self, req_data, current_time_ns):
+        """NEAREST_MIGRATE: if the nearest GPU has no free running slot,
+        forward the request over the GPU-to-GPU backbone link to the
+        second-nearest GPU instead of queueing (resolved at most once per
+        request -- no cascading migration to a third-nearest GPU).
+
+        Unlike NEAREST_REJECT, this models a server-side redirect rather
+        than a UE resend: the UE->nearest-GPU uplink already happened (it's
+        baked into the geographic generator's `arrival_time_ns`), so
+        detecting "no free slot" is a free, local, instant check -- no
+        wasted round trip to the UE. The only new cost is the backbone hop
+        (GPU_A -> GPU_B, at the operator's own bandwidth/distance, distinct
+        from the UE<->GPU access link) to move the request. The eventual
+        first token is delivered directly from GPU_B to the original UE
+        using the normal UE<->GPU access-link model, at GPU_B's distance
+        instead of GPU_A's.
+
+        Returns True if the request was deferred (arrival time pushed back
+        by the backbone transfer time and the caller must reinsert it into
+        the pending queue); False if it was accepted at the nearest GPU
+        as-is.
+        """
+        geo = req_data.get('geo')
+        if geo is None or 'assigned_instance_id' not in req_data:
+            raise RuntimeError(
+                "NEAREST_MIGRATE routing policy requires a geographic workload "
+                "with second-nearest-GPU fields (generate it with "
+                "`python -m workloads.generators geographic`)."
+            )
+        if self.gpu_backbone_bandwidth_gbps is None or self.gpu_backbone_distance_m is None:
+            raise RuntimeError(
+                "NEAREST_MIGRATE routing policy requires --gpu-backbone-bandwidth-gbps "
+                "and --gpu-backbone-distance-m (GPU-to-GPU backbone link, distinct from "
+                "the UE<->GPU access link)."
+            )
+
+        geo.setdefault('nearest_gpu_id', geo.get('gpu_id'))
+
+        nearest_instance_id = req_data['assigned_instance_id']
+        sched = self._find_scheduler(self.prefill_schedulers, nearest_instance_id)
+        if sched is None:
+            raise RuntimeError(
+                f"NEAREST_MIGRATE routing: assigned_instance_id {nearest_instance_id} "
+                f"does not match any available prefill instance."
+            )
+
+        if self._has_capacity(sched):
+            return False
+
+        second_gpu_id = int(geo['second_nearest_gpu_id'])
+        second_distance_m = float(geo['second_nearest_distance_m'])
+        per_meter_ns = float(geo['distance_latency_ns_per_meter'])
+        access_mbps = float(geo['network_throughput_mbps'])
+        request_payload_bytes = float(geo['request_payload_bytes'])
+        first_token_payload_bytes = float(geo['first_token_payload_bytes'])
+
+        # --- GPU_A -> GPU_B backbone forward (operator network, not the UE link) ---
+        backbone_mbps = float(self.gpu_backbone_bandwidth_gbps) * 1000.0
+        migration_distance_ns = round(float(self.gpu_backbone_distance_m) * per_meter_ns)
+        migration_serialization_ns = round(8000.0 * request_payload_bytes / backbone_mbps)
+        migration_latency_ns = migration_distance_ns + migration_serialization_ns
+
+        # --- GPU_B -> UE downlink (normal access link, but from GPU_B's distance) ---
+        downlink_distance_ns = round(second_distance_m * per_meter_ns)
+        downlink_serialization_ns = round(8000.0 * first_token_payload_bytes / access_mbps)
+        downlink_latency_ns = downlink_distance_ns + downlink_serialization_ns
+
+        # Original UE -> GPU_A uplink already happened; keep it as paid, just
+        # fold it into the total communication cost alongside the new legs.
+        uplink_latency_ns = float(geo.get('uplink_latency_ns', 0))
+
+        geo.update({
+            'gpu_id': second_gpu_id,
+            'distance_m': second_distance_m,
+            'downlink_distance_latency_ns': downlink_distance_ns,
+            'downlink_serialization_latency_ns': downlink_serialization_ns,
+            'downlink_latency_ns': downlink_latency_ns,
+            'communication_latency_ns': uplink_latency_ns + migration_latency_ns + downlink_latency_ns,
+            'rerouted': 1,
+            'migration_latency_ns': migration_latency_ns,
+        })
+        req_data['assigned_instance_id'] = second_gpu_id
+        req_data['arrival_time_ns'] = current_time_ns + migration_latency_ns
+        req_data['_reject_resolved'] = True
+        if self.routing_policy == "NEAREST_MIGRATE_KV":
+            self._attach_kv_handoff(
+                req_data,
+                source_instance_id=nearest_instance_id,
+                target_instance_id=second_gpu_id,
+            )
+        return True
+
+    def _attach_kv_handoff(self, req_data, source_instance_id, target_instance_id):
+        """Attach dynamic KV handoff metadata for NEAREST_MIGRATE_KV.
+
+        The regular failover path later seeds the target scheduler's prefix
+        cache and charges the KV transfer latency. Keeping the metadata in the
+        same shape as static failover workloads lets the scheduler and CSV
+        output stay shared between both experiments.
+        """
+        reuse_prefix_toks = int(req_data.get('reuse_prefix_toks', 0))
+        if reuse_prefix_toks <= 0:
+            return
+
+        req_data['failover'] = {
+            'failover_mode': 'migrate_kv',
+            'failed_instance_id': source_instance_id,
+            'target_instance_id': target_instance_id,
+            'reuse_prefix_toks': reuse_prefix_toks,
+            'kv_migration_bandwidth_gbps': float(req_data.get(
+                'kv_migration_bandwidth_gbps',
+                self.gpu_backbone_bandwidth_gbps or DEFAULT_KV_MIGRATION_BANDWIDTH_GBPS,
+            )),
+            'kv_migration_distance_m': float(req_data.get(
+                'kv_migration_distance_m',
+                self.gpu_backbone_distance_m or DEFAULT_KV_MIGRATION_DISTANCE_M,
+            )),
+            'distance_latency_ns_per_meter': float(req_data.get(
+                'distance_latency_ns_per_meter',
+                DEFAULT_DISTANCE_LATENCY_NS_PER_M,
+            )),
+        }
+
+    def _attach_local_kv_reuse(self, req_data, target_instance_id):
+        """Attach local prefix-cache reuse metadata without transfer latency."""
+        reuse_prefix_toks = int(req_data.get('reuse_prefix_toks', 0))
+        if reuse_prefix_toks <= 0 or req_data.get('failover'):
+            return
+        req_data['failover'] = {
+            'failover_mode': 'local_kv',
+            'failed_instance_id': target_instance_id,
+            'target_instance_id': target_instance_id,
+            'reuse_prefix_toks': reuse_prefix_toks,
+        }
+    # <<< SPEC: redirect-on-capacity routing (helpers) -------------------------
+
     # -----------------------------------------------------------------------
     # Request loading and real-time routing
     # -----------------------------------------------------------------------
@@ -389,9 +553,30 @@ class Router:
             'output_toks': int(row['input_toks'] + row['output_toks']),
             'arrival_time_ns': int(row['arrival_time_ns']),
         }
+        # >>> SPEC: fair-comparison KV baseline. Base spec gated all of
+        # reuse_prefix_toks / input_hash_ids / local-KV-reuse loading to
+        # NEAREST_KV and NEAREST_MIGRATE_KV only, which meant NEAREST_REJECT
+        # and NEAREST_MIGRATE always paid a cold prefill for every request
+        # (redirected or not) while NEAREST_KV/NEAREST_MIGRATE_KV got a free
+        # local cache hit for every request that never redirects. That mixes
+        # "does this policy redirect load" with "does this policy start with
+        # a warm KV cache", which are independent questions. All 4 policies
+        # now assume the same starting condition (every request's prefix is
+        # already cached on its *home* GPU); only whether a redirected
+        # request's cache follows it to the new GPU differs by policy.
+        if self.routing_policy in ("NEAREST_KV", "NEAREST_MIGRATE_KV", "NEAREST_REJECT", "NEAREST_MIGRATE"):
+            req_data['reuse_prefix_toks'] = int(row.get('reuse_prefix_toks', 0))
+        # <<< SPEC: fair-comparison KV baseline
         if enable_prefix_caching:
             input_hash_ids = row.get('input_tok_ids', [])
-            if failover and failover.get('failover_mode') == 'migrate_kv' and not input_hash_ids:
+            if (
+                (
+                    failover and failover.get('failover_mode') == 'migrate_kv'
+                ) or (
+                    self.routing_policy in ("NEAREST_KV", "NEAREST_MIGRATE_KV", "NEAREST_REJECT", "NEAREST_MIGRATE")
+                    and int(row.get('reuse_prefix_toks', 0)) > 0
+                )
+            ) and not input_hash_ids:
                 input_hash_ids = list(range(int(row['input_toks'])))
             req_data['input_hash_ids'] = input_hash_ids
             req_data['output_hash_ids'] = row.get('output_tok_ids', [])
@@ -399,6 +584,13 @@ class Router:
             req_data['assigned_instance_id'] = int(row['assigned_instance_id'])
         if failover:
             req_data['failover'] = failover
+        if self.routing_policy in ("NEAREST_KV", "NEAREST_MIGRATE_KV"):
+            if 'kv_migration_bandwidth_gbps' in row:
+                req_data['kv_migration_bandwidth_gbps'] = float(row['kv_migration_bandwidth_gbps'])
+            if 'kv_migration_distance_m' in row:
+                req_data['kv_migration_distance_m'] = float(row['kv_migration_distance_m'])
+            if 'distance_latency_ns_per_meter' in row:
+                req_data['distance_latency_ns_per_meter'] = float(row['distance_latency_ns_per_meter'])
         geo = _extract_geo_fields(row)
         if geo is not None:
             req_data['geo'] = geo
@@ -409,14 +601,14 @@ class Router:
         if mode is None:
             return None
         mode = str(mode).lower()
-        if mode not in ('cold', 'migrate_kv'):
-            raise ValueError(f"Unknown failover_mode '{mode}'. Supported: cold, migrate_kv")
+        if mode not in ('cold', 'migrate_kv', 'local_kv'):
+            raise ValueError(f"Unknown failover_mode '{mode}'. Supported: cold, migrate_kv, local_kv")
         target = row.get('target_instance_id', row.get('failover_target_instance_id'))
-        if target is None:
+        if target is None and mode != 'local_kv':
             raise ValueError("failover workloads require target_instance_id")
         failover = {
             'failover_mode': mode,
-            'target_instance_id': int(target),
+            'target_instance_id': int(target) if target is not None else '',
             'failed_instance_id': row.get('failed_instance_id', row.get('source_instance_id', '')),
             'reuse_prefix_toks': int(row.get('reuse_prefix_toks', 0)),
             'kv_migration_bandwidth_gbps': float(row.get(
@@ -439,6 +631,33 @@ class Router:
         if not failover:
             return
         if failover.get('failover_mode') == 'cold':
+            geo = dict(req_data.get('geo') or {})
+            geo.setdefault('communication_latency_ns', 0)
+            geo.setdefault('request_send_time_ns', int(req_data['arrival_time_ns']))
+            req_data['geo'] = geo
+            return
+        if failover.get('failover_mode') == 'local_kv':
+            if failover.get('_kv_migration_applied', False):
+                return
+            if not sched.enable_prefix_caching:
+                raise RuntimeError("failover_mode=local_kv requires --enable-prefix-caching")
+
+            input_hash_ids = req_data.get('input_hash_ids', [])
+            if not input_hash_ids:
+                input_hash_ids = list(range(int(req_data['input_toks'])))
+                req_data['input_hash_ids'] = input_hash_ids
+
+            requested_prefix = int(failover.get('reuse_prefix_toks', 0))
+            reused_tokens = sched.memory.seed_migrated_prefix(input_hash_ids, requested_prefix)
+            reuse_bytes = sched.memory.get_kv(reused_tokens) * sched.num_npus
+            failover.update({
+                '_kv_migration_applied': True,
+                'kv_migration_tokens': reused_tokens,
+                'kv_migration_bytes': reuse_bytes,
+                'kv_migration_latency_ns': 0,
+                'kv_migration_distance_latency_ns': 0,
+                'kv_migration_serialization_latency_ns': 0,
+            })
             geo = dict(req_data.get('geo') or {})
             geo.setdefault('communication_latency_ns', 0)
             geo.setdefault('request_send_time_ns', int(req_data['arrival_time_ns']))
@@ -530,6 +749,11 @@ class Router:
             if req_data['arrival_time_ns'] > current_time_ns:
                 break
 
+            # >>> SPEC: redirect-on-capacity routing. Base router.py went
+            # straight from the arrival check above to
+            # `instance_id = self._select_instance(...)` below — everything
+            # in this block up to (not including) the `failover = ...` line
+            # is new.
             if self.routing_policy == "NEAREST_REJECT" and not req_data.get('_reject_resolved', False):
                 if self._maybe_reject_and_redirect(req_data, current_time_ns):
                     # Arrival time pushed back to account for the capacity-check
@@ -539,6 +763,19 @@ class Router:
                     self._insert_pending_sorted(req_data)
                     continue
 
+            if self.routing_policy in ("NEAREST_MIGRATE", "NEAREST_MIGRATE_KV") and not req_data.get('_reject_resolved', False):
+                if self._maybe_migrate_and_redirect(req_data, current_time_ns):
+                    # Arrival time pushed back by the GPU-to-GPU backbone
+                    # transfer only (the UE->GPU_A uplink already elapsed);
+                    # reinsert in sorted order and retry later.
+                    self._pending_requests.pop(self._pending_idx)
+                    self._insert_pending_sorted(req_data)
+                    continue
+            # <<< SPEC: redirect-on-capacity routing
+
+            # NOTE: the `failover` branch below is a separate, pre-existing
+            # feature (static per-row KV-cache failover/migration), not part
+            # of the redirect-on-capacity spec above.
             failover = req_data.get('failover')
             if failover and 'target_instance_id' in failover:
                 instance_id = self._find_scheduler_index(
@@ -553,6 +790,21 @@ class Router:
             else:
                 instance_id = self._select_instance(self.prefill_schedulers, "prefill", req_data)
             sched = self.prefill_schedulers[instance_id]
+            # >>> SPEC: fair-comparison KV baseline. NEAREST_KV/NEAREST_MIGRATE_KV
+            # always get the free local-cache assumption (they never leave a
+            # cache behind: NEAREST_KV never redirects, NEAREST_MIGRATE_KV pays
+            # to bring the cache along when it does). NEAREST_REJECT/NEAREST_MIGRATE
+            # get it too, but only when this request is still on its *home* GPU
+            # (`_reject_resolved` is only set once a redirect has actually fired) —
+            # once redirected, those two policies have no mechanism to move the
+            # cache, so the destination GPU must recompute from scratch, same as
+            # in reality.
+            if self.routing_policy in ("NEAREST_KV", "NEAREST_MIGRATE_KV") or (
+                self.routing_policy in ("NEAREST_REJECT", "NEAREST_MIGRATE")
+                and not req_data.get('_reject_resolved', False)
+            ):
+                self._attach_local_kv_reuse(req_data, sched.instance_id)
+            # <<< SPEC: fair-comparison KV baseline
             self._apply_kv_migration_if_needed(req_data, sched)
             geo = req_data.get('geo')
 

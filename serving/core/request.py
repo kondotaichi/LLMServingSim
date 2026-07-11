@@ -76,12 +76,17 @@ class Request:
         self.communication_latency_ns = geo.get('communication_latency_ns', 0)
         self.request_send_time_ns = geo.get('request_send_time_ns')  # None => old-format workload
 
-        # --- NEAREST_REJECT capacity-aware routing (only set by that policy) ---
+        # >>> SPEC: redirect-on-capacity routing (queue-vs-redirect experiment) ---
+        # Not present pre-spec. Populated only by the NEAREST_REJECT (UE
+        # resend), NEAREST_MIGRATE, and NEAREST_MIGRATE_KV routing policies
+        # in router.py; every other policy leaves these at their defaults.
         self.nearest_gpu_id = geo.get('nearest_gpu_id', geo.get('gpu_id'))
         self.rerouted = geo.get('rerouted', 0)
         self.reject_penalty_ns = geo.get('reject_penalty_ns', 0)
+        self.migration_latency_ns = geo.get('migration_latency_ns', 0)
+        # <<< SPEC: redirect-on-capacity routing -----------------------------
 
-        # --- KV-cache failover / migration simulation ---
+        # --- KV-cache failover / migration simulation (pre-existing, unrelated to the spec above) ---
         failover = failover or {}
         self.failover_mode = failover.get('failover_mode', '')
         self.failed_instance_id = failover.get('failed_instance_id', '')

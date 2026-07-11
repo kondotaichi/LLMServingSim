@@ -984,9 +984,12 @@ class Scheduler:
                                 'request_completion_latency_ns',
                                 'ttft_bottleneck', 'total_latency_bottleneck',
                                 'communication_ratio', 'queueing_ratio', 'prefill_ratio', 'decode_ratio',
-                                # --- NEAREST_REJECT capacity-aware routing (0/blank for other policies) ---
-                                'nearest_gpu_id', 'rerouted', 'reject_penalty_ns',
-                                # --- KV-cache failover / migration ---
+                                # >>> SPEC: redirect-on-capacity routing — base column list ended at
+                                # 'decode_ratio' above. 0/blank for every policy except
+                                # NEAREST_REJECT/NEAREST_MIGRATE/NEAREST_MIGRATE_KV.
+                                'nearest_gpu_id', 'rerouted', 'reject_penalty_ns', 'migration_latency_ns',
+                                # <<< SPEC: redirect-on-capacity routing
+                                # --- KV-cache failover / migration (separate, pre-existing feature) ---
                                 'failover_mode', 'failed_instance_id', 'failover_target_instance_id',
                                 'reuse_prefix_toks', 'kv_migration_tokens', 'kv_migration_bytes',
                                 'kv_migration_latency_ns', 'kv_migration_distance_latency_ns',
@@ -1046,9 +1049,12 @@ class Scheduler:
                     req.queueing_ratio,
                     req.prefill_ratio,
                     req.decode_ratio,
+                    # >>> SPEC: redirect-on-capacity routing (base row ended at req.decode_ratio above)
                     req.nearest_gpu_id if req.nearest_gpu_id is not None else '',
                     req.rerouted,
                     req.reject_penalty_ns,
+                    req.migration_latency_ns,
+                    # <<< SPEC: redirect-on-capacity routing
                     req.failover_mode,
                     req.failed_instance_id,
                     req.failover_target_instance_id,

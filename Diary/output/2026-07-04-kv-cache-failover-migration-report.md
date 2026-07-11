@@ -191,6 +191,110 @@ docker run --rm --platform linux/amd64 \
 - `results/failover-kv-cold.csv`
 - `results/failover-kv-migrate_kv.csv`
 
+## KV cacheを引き継ぐためのコマンド
+
+KV cacheを引き継ぐ場合、実行時に特別なCLI flagを追加するのではなく、workload JSONL側でfailover requestを明示する。
+
+必要なフィールド:
+
+| Field | Value |
+| --- | --- |
+| `failover_mode` | `migrate_kv` |
+| `failed_instance_id` | KV cacheを持っていたGPU Aのinstance id |
+| `target_instance_id` | 引き継ぎ先GPU Bのinstance id |
+| `reuse_prefix_toks` | GPU Bへ移送して再利用するprefix token数 |
+| `input_tok_ids` | prefix matchingに使うprompt token id列 |
+
+例:
+
+```json
+{
+  "input_toks": 1152,
+  "output_toks": 16,
+  "arrival_time_ns": 0,
+  "input_tok_ids": [0, 1, 2],
+  "output_tok_ids": [1152, 1153],
+  "failover_mode": "migrate_kv",
+  "failed_instance_id": 0,
+  "target_instance_id": 1,
+  "reuse_prefix_toks": 1024
+}
+```
+
+このrequestは、通常のrouting policyではなく `target_instance_id=1` に強制routingされる。
+`migrate_kv` の場合、simulation開始時にGPU BのNPU prefix cacheへ1024 tokens分のprefix metadataをseedし、
+そのKV byte量に対して100Gbps・10kmの移送遅延を加える。
+
+今回のスモークと同じworkloadを生成するコマンド:
+
+```bash
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+out = Path("workloads/generated/failover_kv")
+out.mkdir(parents=True, exist_ok=True)
+
+input_toks = 1152
+prefix_toks = 1024
+output_toks = 16
+
+base = {
+    "input_toks": input_toks,
+    "output_toks": output_toks,
+    "arrival_time_ns": 0,
+    "input_tok_ids": list(range(input_toks)),
+    "output_tok_ids": list(range(input_toks, input_toks + output_toks)),
+    "failed_instance_id": 0,
+    "target_instance_id": 1,
+    "reuse_prefix_toks": prefix_toks,
+}
+
+for mode in ["cold", "migrate_kv"]:
+    row = dict(base)
+    row["failover_mode"] = mode
+    (out / f"{mode}.jsonl").write_text(json.dumps(row) + "\n")
+PY
+```
+
+KV cacheを引き継ぐ `migrate_kv` だけを実行するコマンド:
+
+```bash
+docker run --rm --platform linux/amd64 \
+  -v /Users/taichikondo/LLMServingSim:/app/LLMServingSim \
+  -w /app/LLMServingSim \
+  astrasim/tutorial-micro2024 \
+  bash -lc "pip3 install -q rich pyinstrument pyyaml msgspec 'protobuf>=6,<7' && \
+  PYTHONPATH=/app/LLMServingSim/astra-sim/extern/graph_frontend/chakra/build/lib \
+  python3 -m serving \
+    --cluster-config configs/cluster/single_node_multi_instance.json \
+    --dataset workloads/generated/failover_kv/migrate_kv.jsonl \
+    --request-routing-policy RR \
+    --output results/failover-kv-migrate_kv.csv \
+    --run-id failover-kv-migrate_kv \
+    --log-level WARNING"
+```
+
+比較対象の `cold` を実行するコマンド:
+
+```bash
+docker run --rm --platform linux/amd64 \
+  -v /Users/taichikondo/LLMServingSim:/app/LLMServingSim \
+  -w /app/LLMServingSim \
+  astrasim/tutorial-micro2024 \
+  bash -lc "pip3 install -q rich pyinstrument pyyaml msgspec 'protobuf>=6,<7' && \
+  PYTHONPATH=/app/LLMServingSim/astra-sim/extern/graph_frontend/chakra/build/lib \
+  python3 -m serving \
+    --cluster-config configs/cluster/single_node_multi_instance.json \
+    --dataset workloads/generated/failover_kv/cold.jsonl \
+    --request-routing-policy RR \
+    --output results/failover-kv-cold.csv \
+    --run-id failover-kv-cold \
+    --log-level WARNING"
+```
+
+`--request-routing-policy RR` はこのfailover requestには実質効かない。`target_instance_id` が指定されているため、Routerがそのinstanceへ強制的に送る。
+
 ## 結果
 
 | Mode | Target instance | Simulator TTFT | E2E TTFT | Prefill service | Decode after TTFT | Communication / migration | Total latency |
@@ -247,6 +351,78 @@ saved prefill latency ≈ 49.31ms - 13.40ms = 35.92ms
 ```
 
 なので、移送する価値がある。
+
+## TTFTとprefill serviceの差分
+
+`migrate_kv` の `Simulator TTFT` は13.61ms、`Prefill service` は13.40msで、約0.21msの差がある。
+
+これは、GPU Bにrequestが到着してから最初のbatchに入るまでのqueue待ちがあるため。
+
+CSVでは以下になっている。
+
+```text
+TTFT                    = 13.609684 ms
+prefill_service_ns      = 13.397101 ms
+queueing_before_ttft_ns = 0.212583 ms
+```
+
+したがって、
+
+```text
+Simulator TTFT = queueing_before_ttft + prefill_service
+               = 0.212583ms + 13.397101ms
+               = 13.609684ms
+```
+
+である。
+
+また、E2E TTFTはGPU B到着前のKV移送時間も含む。
+
+```text
+KV migration latency = 10.787418ms
+Simulator TTFT       = 13.609684ms
+E2E TTFT             = 24.397102ms
+```
+
+## 追加prompt分のprefillは含まれているか
+
+含まれている。
+
+今回の `migrate_kv` では、
+
+```text
+prompt j length      = 1152 tokens
+reuse_prefix_toks    = 1024 tokens
+newly added prompt   = 128 tokens
+```
+
+である。
+
+実装上は、GPU BのNPU prefix cacheへ1024 tokens分をseedしたあと、通常のprefix matchingで `prefix_cache_hit=1024` になる。その結果、requestの `num_computed_tokens` は1024から始まり、schedulerがprefillする残りは次になる。
+
+```text
+remaining prefill tokens = original_input - prefix_cache_hit
+                         = 1152 - 1024
+                         = 128 tokens
+```
+
+したがって、`migrate_kv` の `prefill_service_ns=13.40ms` は、移送できていない追加prompt 128 tokens分のprefill処理時間を含んでいる。
+
+比較すると:
+
+```text
+cold:
+  prefix hit       = 0 tokens
+  prefill対象      = 1152 tokens
+  prefill service  = 49.31ms
+
+migrate_kv:
+  prefix hit       = 1024 tokens
+  prefill対象      = 128 tokens
+  prefill service  = 13.40ms
+```
+
+なお、ログの `Total input tokens: 1152` は、リクエストされたprompt token数を表している。これはprefix hit分も含むため、実際にGPUでprefill計算したtoken数とは一致しない。
 
 ## 注意点
 

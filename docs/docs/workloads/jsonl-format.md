@@ -31,7 +31,7 @@ Every line is one independent request:
 | `failover_mode` | `cold` / `migrate_kv` | optional | Force this request onto a failover target. `cold` recomputes the prompt; `migrate_kv` seeds the target prefix cache before scheduling |
 | `target_instance_id` | int | required with `failover_mode` | Instance that receives the failover request |
 | `failed_instance_id` | int | optional | Instance that previously held the KV cache. Informational in the current model |
-| `reuse_prefix_toks` | int | optional | Prompt-prefix tokens whose KV cache should be migrated in `migrate_kv` mode |
+| `reuse_prefix_toks` | int | optional | Prompt-prefix tokens whose KV cache should be reused in `local_kv` mode, `NEAREST_KV` routing, `migrate_kv` mode, or `NEAREST_MIGRATE_KV` routing |
 | `kv_migration_bandwidth_gbps` | float | optional | GPU-to-GPU KV migration bandwidth. Defaults to `100` |
 | `kv_migration_distance_m` | float | optional | GPU-to-GPU distance. Defaults to `10000` |
 
@@ -70,6 +70,29 @@ metadata rather than real tensors, so this models the block footprint
 and transfer delay, not byte-level tensor contents. Use `cold` with
 the same `target_instance_id` to force recomputation on the failover
 GPU without seeding the prefix cache.
+
+### Dynamic nearest-GPU handoff with KV sharing
+
+For geographic workloads, `NEAREST_MIGRATE_KV` extends
+`NEAREST_MIGRATE`: when the nearest GPU has no free running slot, the
+request is forwarded to the second-nearest GPU and, if the row has
+`reuse_prefix_toks > 0`, the reusable prefix KV cache is transferred
+and seeded on that target GPU before scheduling. This requires prefix
+caching to be enabled.
+
+`NEAREST_KV` is the non-redirect counterpart: it always uses the
+nearest GPU, but seeds `reuse_prefix_toks` into that nearest GPU's
+prefix cache without adding transfer latency. Use it when modeling the
+case where the user's previous KV cache is already local to the nearest
+GPU.
+
+The request still needs the geographic fields produced by the
+geographic workload generator (`assigned_instance_id`,
+`second_nearest_gpu_id`, `second_nearest_distance_m`, access-link
+latency fields, and payload sizes). The KV transfer uses
+`kv_migration_bandwidth_gbps` and `kv_migration_distance_m` from the
+row when present; otherwise it falls back to the GPU-backbone CLI
+values supplied for `NEAREST_MIGRATE`.
 
 ### When to use flat
 
