@@ -1,0 +1,862 @@
+─────────────────────────────── LLMServingSim2.0 ───────────────────────────────
+  A Unified Simulator for Heterogeneous Hardware and Serving Techniques in LLM  
+────────────────────────────────────────────────────────────────────────────────
+      _    _    __  __ ___              _           ___ _       ___   __        
+     | |  | |  |  \/  / __| ___ _ ___ _(_)_ _  __ _/ __(_)_ __ |_  ) /  \       
+     | |__| |__| |\/| \__ \/ -_) '_\ V / | ' \/ _` \__ \ | '  \ / / | () |      
+     |____|____|_|  |_|___/\___|_|  \_/|_|_||_\__, |___/_|_|_|_/___(_)__/       
+                                              |___/                             
+────────────────────────────────────────────────────────────────────────────────
+                              Input configuration                               
+
+  • Cluster config             : outputs/eviction_placement_sweep/w-cpu_kv-npu_evict-cpu.json
+  • Run ID                     : w-cpu_kv-npu_evict-cpu
+  • ASTRA-Sim inputs root      : /app/LLMServingSim/astra-sim/inputs/runs/w-cpu_kv-npu_evict-cpu
+  • Dataset                    : outputs/eviction_placement_sweep/workload.jsonl
+  • Max num seqs               : 8
+  • Max batched tokens         : 4096
+  • Block size (tokens)        : 16
+  • Request routing            : LOAD
+  • Expert routing             : BALANCED
+  • Prefix caching             : DISABLED
+  • Chunked prefill            : ENABLED
+  • Prefix caching scheme      : xPU-Only
+  • Centralized prefix caching : DISABLED
+  • Offload attention to PIM   : DISABLED
+  • Sub-batch interleaving     : DISABLED
+  • Prioritize prefill         : DISABLED
+  • Network backend            : analytical
+  • Log interval (s)           : 1.0
+  • Log level                  : INFO
+────────────────────────────────────────────────────────────────────────────────
+▶ Starting simulation...
+
+[06:50:26.046] [MemoryModel] [node=0,inst=0] INFO     NPU: model weight 15316MB loaded
+[06:50:26.047] [Router] INFO     Loaded 4 requests into pending queue (0 agentic sessions deferred)
+[06:50:26.229] [Controller] INFO     NPU[0] iteration 0 finished, 1 cycles, exposed communication 0 cycles.
+[06:50:26.230] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 15316.51MB load: 512.00MB after: 15828.51MB
+[06:50:26.231] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #0 to NPU[0]
+[06:50:27.733] [TraceGenerator] WARNING  max-num-batched-tokens=4096 exceeds profiled 2048 for RTXPRO6000/meta-llama/Llama-3.1-8B/bf16; attention/dense lookups will extrapolate
+[06:50:27.734] [TraceGenerator] [node=0,inst=0] INFO     Batch #0: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=4096 req_ids=[0]
+[06:50:27.880] [Controller] INFO     NPU[0] iteration 1 finished, 105557595 cycles, exposed communication 8583033 cycles.
+[06:50:27.881] [Scheduler] [node=0,inst=0] INFO     Batch #0 is done
+[06:50:27.881] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 15828.51MB load: 256.00MB after: 16084.51MB
+[06:50:27.881] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #1 to NPU[0]
+[06:50:27.882] [TraceGenerator] [node=0,inst=0] INFO     Batch #1: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=2048 req_ids=[0]
+[06:50:28.021] [Controller] INFO     NPU[0] iteration 2 finished, 210601568 cycles, exposed communication 14912382 cycles.
+[06:50:28.022] [Scheduler] [node=0,inst=0] INFO     Batch #1 is done
+[06:50:28.022] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16084.51MB load: 2.00MB after: 16086.51MB
+[06:50:28.023] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #2 to NPU[0]
+[06:50:28.023] [TraceGenerator] [node=0,inst=0] INFO     Batch #2: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:28.162] [Controller] INFO     NPU[0] iteration 3 finished, 274077738 cycles, exposed communication 66425639 cycles.
+[06:50:28.163] [Scheduler] [node=0,inst=0] INFO     Batch #2 is done
+[06:50:28.163] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #3 to NPU[0]
+[06:50:28.164] [TraceGenerator] [node=0,inst=0] INFO     Batch #3: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:28.309] [Controller] INFO     NPU[0] iteration 4 finished, 337553908 cycles, exposed communication 117938832 cycles.
+[06:50:28.310] [Scheduler] [node=0,inst=0] INFO     Batch #3 is done
+[06:50:28.310] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #4 to NPU[0]
+[06:50:28.311] [TraceGenerator] [node=0,inst=0] INFO     Batch #4: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:28.441] [Controller] INFO     NPU[0] iteration 5 finished, 401030078 cycles, exposed communication 169451961 cycles.
+[06:50:28.442] [Scheduler] [node=0,inst=0] INFO     Batch #4 is done
+[06:50:28.442] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #5 to NPU[0]
+[06:50:28.443] [TraceGenerator] [node=0,inst=0] INFO     Batch #5: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:28.573] [Controller] INFO     NPU[0] iteration 6 finished, 464506248 cycles, exposed communication 220965026 cycles.
+[06:50:28.573] [Scheduler] [node=0,inst=0] INFO     Batch #5 is done
+[06:50:28.574] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #6 to NPU[0]
+[06:50:28.574] [TraceGenerator] [node=0,inst=0] INFO     Batch #6: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:28.711] [Controller] INFO     NPU[0] iteration 7 finished, 527982418 cycles, exposed communication 272477995 cycles.
+[06:50:28.713] [Scheduler] [node=0,inst=0] INFO     Batch #6 is done
+[06:50:28.713] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16086.51MB load: 512.00MB after: 16598.51MB
+[06:50:28.713] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #7 to NPU[0]
+[06:50:28.714] [TraceGenerator] [node=0,inst=0] INFO     Batch #7: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=4096 req_ids=[0, 1]
+[06:50:28.855] [Controller] INFO     NPU[0] iteration 8 finished, 636770053 cycles, exposed communication 280955999 cycles.
+[06:50:28.856] [Scheduler] [node=0,inst=0] INFO     Batch #7 is done
+[06:50:28.856] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16598.51MB load: 256.00MB after: 16854.51MB
+[06:50:28.856] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #8 to NPU[0]
+[06:50:28.857] [TraceGenerator] [node=0,inst=0] INFO     Batch #8: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2050 req_ids=[0, 1]
+[06:50:28.998] [Controller] INFO     NPU[0] iteration 9 finished, 743123632 cycles, exposed communication 287287342 cycles.
+[06:50:28.999] [Scheduler] [node=0,inst=0] INFO     Batch #8 is done
+[06:50:28.999] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16854.51MB load: 2.00MB after: 16856.51MB
+[06:50:29.000] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #9 to NPU[0]
+[06:50:29.001] [TraceGenerator] [node=0,inst=0] INFO     Batch #9: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:29.133] [Controller] INFO     NPU[0] iteration 10 finished, 806574946 cycles, exposed communication 338303320 cycles.
+[06:50:29.133] [Scheduler] [node=0,inst=0] INFO     Batch #9 is done
+[06:50:29.134] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #10 to NPU[0]
+[06:50:29.135] [TraceGenerator] [node=0,inst=0] INFO     Batch #10: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:29.266] [Controller] INFO     NPU[0] iteration 11 finished, 870026260 cycles, exposed communication 389319106 cycles.
+[06:50:29.266] [Scheduler] [node=0,inst=0] INFO     Batch #10 is done
+[06:50:29.267] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #11 to NPU[0]
+[06:50:29.268] [TraceGenerator] [node=0,inst=0] INFO     Batch #11: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:29.405] [Controller] INFO     NPU[0] iteration 12 finished, 933477574 cycles, exposed communication 440334668 cycles.
+[06:50:29.406] [Scheduler] [node=0,inst=0] INFO     Batch #11 is done
+[06:50:29.406] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #12 to NPU[0]
+[06:50:29.407] [TraceGenerator] [node=0,inst=0] INFO     Batch #12: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:29.546] [Controller] INFO     NPU[0] iteration 13 finished, 996928888 cycles, exposed communication 491350038 cycles.
+[06:50:29.547] [Scheduler] [node=0,inst=0] INFO     Batch #12 is done
+[06:50:29.547] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #13 to NPU[0]
+[06:50:29.548] [TraceGenerator] [node=0,inst=0] INFO     Batch #13: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:29.681] [Controller] INFO     NPU[0] iteration 14 finished, 1060380202 cycles, exposed communication 542365216 cycles.
+[06:50:29.682] [Scheduler] [node=0,inst=0] INFO     Batch #13 is done
+[06:50:29.682] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #14 to NPU[0]
+[06:50:29.683] [TraceGenerator] [node=0,inst=0] INFO     Batch #14: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[1.0s] Avg prompt throughput: 12288.0 tokens/s, Avg generation throughput: 19.0 tokens/s
+        ├─Running Instance[0]: 2 reqs, Waiting: 1 reqs, Total # 1 NPUs, Each NPU Memory Usage 16856.51 MB (99.954 % Used)
+        └─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[06:50:29.822] [Controller] INFO     NPU[0] iteration 15 finished, 1123831516 cycles, exposed communication 593380202 cycles.
+[06:50:29.822] [Scheduler] [node=0,inst=0] INFO     Batch #14 is done
+[06:50:29.822] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #15 to NPU[0]
+[06:50:29.823] [TraceGenerator] [node=0,inst=0] INFO     Batch #15: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:29.954] [Controller] INFO     NPU[0] iteration 16 finished, 1187282830 cycles, exposed communication 644394964 cycles.
+[06:50:29.955] [Scheduler] [node=0,inst=0] INFO     Batch #15 is done
+[06:50:29.955] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #16 to NPU[0]
+[06:50:29.956] [TraceGenerator] [node=0,inst=0] INFO     Batch #16: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:30.091] [Controller] INFO     NPU[0] iteration 17 finished, 1250734144 cycles, exposed communication 695409534 cycles.
+[06:50:30.092] [Scheduler] [node=0,inst=0] INFO     Batch #16 is done
+[06:50:30.092] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #17 to NPU[0]
+[06:50:30.093] [TraceGenerator] [node=0,inst=0] INFO     Batch #17: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:30.223] [Controller] INFO     NPU[0] iteration 18 finished, 1314185458 cycles, exposed communication 746423912 cycles.
+[06:50:30.224] [Scheduler] [node=0,inst=0] INFO     Batch #17 is done
+[06:50:30.224] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16856.51MB load: 2.00MB after: 16858.51MB
+[06:50:30.224] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #18 to NPU[0]
+[06:50:30.225] [TraceGenerator] [node=0,inst=0] INFO     Batch #18: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:30.359] [Controller] INFO     NPU[0] iteration 19 finished, 1377636772 cycles, exposed communication 797438098 cycles.
+[06:50:30.360] [Scheduler] [node=0,inst=0] INFO     Batch #18 is done
+[06:50:30.360] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #19 to NPU[0]
+[06:50:30.361] [TraceGenerator] [node=0,inst=0] INFO     Batch #19: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:30.500] [Controller] INFO     NPU[0] iteration 20 finished, 1441088086 cycles, exposed communication 848452060 cycles.
+[06:50:30.501] [Scheduler] [node=0,inst=0] INFO     Batch #19 is done
+[06:50:30.502] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #20 to NPU[0]
+[06:50:30.503] [TraceGenerator] [node=0,inst=0] INFO     Batch #20: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:30.640] [Controller] INFO     NPU[0] iteration 21 finished, 1504539400 cycles, exposed communication 899465830 cycles.
+[06:50:30.640] [Scheduler] [node=0,inst=0] INFO     Batch #20 is done
+[06:50:30.641] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #21 to NPU[0]
+[06:50:30.642] [TraceGenerator] [node=0,inst=0] INFO     Batch #21: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:30.777] [Controller] INFO     NPU[0] iteration 22 finished, 1567990714 cycles, exposed communication 950479408 cycles.
+[06:50:30.778] [Scheduler] [node=0,inst=0] INFO     Batch #21 is done
+[06:50:30.779] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #22 to NPU[0]
+[06:50:30.780] [TraceGenerator] [node=0,inst=0] INFO     Batch #22: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:30.922] [Controller] INFO     NPU[0] iteration 23 finished, 1631442028 cycles, exposed communication 1001492794 cycles.
+[06:50:30.923] [Scheduler] [node=0,inst=0] INFO     Batch #22 is done
+[06:50:30.923] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #23 to NPU[0]
+[06:50:30.924] [TraceGenerator] [node=0,inst=0] INFO     Batch #23: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:31.064] [Controller] INFO     NPU[0] iteration 24 finished, 1694893342 cycles, exposed communication 1052505956 cycles.
+[06:50:31.065] [Scheduler] [node=0,inst=0] INFO     Batch #23 is done
+[06:50:31.065] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #24 to NPU[0]
+[06:50:31.066] [TraceGenerator] [node=0,inst=0] INFO     Batch #24: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:31.206] [Controller] INFO     NPU[0] iteration 25 finished, 1758344656 cycles, exposed communication 1103518926 cycles.
+[06:50:31.207] [Scheduler] [node=0,inst=0] INFO     Batch #24 is done
+[06:50:31.208] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16858.51MB load: 2.00MB after: 16860.51MB
+[06:50:31.208] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #25 to NPU[0]
+[06:50:31.209] [TraceGenerator] [node=0,inst=0] INFO     Batch #25: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:31.362] [Controller] INFO     NPU[0] iteration 26 finished, 1821795970 cycles, exposed communication 1154531704 cycles.
+[06:50:31.363] [Scheduler] [node=0,inst=0] INFO     Batch #25 is done
+[06:50:31.363] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #26 to NPU[0]
+[06:50:31.364] [TraceGenerator] [node=0,inst=0] INFO     Batch #26: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:31.497] [Controller] INFO     NPU[0] iteration 27 finished, 1885247284 cycles, exposed communication 1205544290 cycles.
+[06:50:31.497] [Scheduler] [node=0,inst=0] INFO     Batch #26 is done
+[06:50:31.498] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #27 to NPU[0]
+[06:50:31.499] [TraceGenerator] [node=0,inst=0] INFO     Batch #27: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:31.630] [Controller] INFO     NPU[0] iteration 28 finished, 1948698598 cycles, exposed communication 1256556652 cycles.
+[06:50:31.631] [Scheduler] [node=0,inst=0] INFO     Batch #27 is done
+[06:50:31.631] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #28 to NPU[0]
+[06:50:31.632] [TraceGenerator] [node=0,inst=0] INFO     Batch #28: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:31.766] [Controller] INFO     NPU[0] iteration 29 finished, 2012149912 cycles, exposed communication 1307568822 cycles.
+[06:50:31.767] [Scheduler] [node=0,inst=0] INFO     Batch #28 is done
+[06:50:31.767] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #29 to NPU[0]
+[06:50:31.768] [TraceGenerator] [node=0,inst=0] INFO     Batch #29: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[2.0s] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 30.0 tokens/s
+        ├─Running Instance[0]: 2 reqs, Waiting: 2 reqs, Total # 1 NPUs, Each NPU Memory Usage 16860.51 MB (99.978 % Used)
+        └─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[06:50:31.903] [Controller] INFO     NPU[0] iteration 30 finished, 2075601226 cycles, exposed communication 1358580800 cycles.
+[06:50:31.903] [Scheduler] [node=0,inst=0] INFO     Batch #29 is done
+[06:50:31.903] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #30 to NPU[0]
+[06:50:31.904] [TraceGenerator] [node=0,inst=0] INFO     Batch #30: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:32.038] [Controller] INFO     NPU[0] iteration 31 finished, 2139052540 cycles, exposed communication 1409592586 cycles.
+[06:50:32.039] [Scheduler] [node=0,inst=0] INFO     Batch #30 is done
+[06:50:32.039] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #31 to NPU[0]
+[06:50:32.040] [TraceGenerator] [node=0,inst=0] INFO     Batch #31: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:32.175] [Controller] INFO     NPU[0] iteration 32 finished, 2202503854 cycles, exposed communication 1460604148 cycles.
+[06:50:32.176] [Scheduler] [node=0,inst=0] INFO     Batch #31 is done
+[06:50:32.176] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #32 to NPU[0]
+[06:50:32.177] [TraceGenerator] [node=0,inst=0] INFO     Batch #32: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:32.313] [Controller] INFO     NPU[0] iteration 33 finished, 2265955168 cycles, exposed communication 1511615518 cycles.
+[06:50:32.314] [Scheduler] [node=0,inst=0] INFO     Batch #32 is done
+[06:50:32.314] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #33 to NPU[0]
+[06:50:32.315] [TraceGenerator] [node=0,inst=0] INFO     Batch #33: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:32.451] [Controller] INFO     NPU[0] iteration 34 finished, 2329406482 cycles, exposed communication 1562626696 cycles.
+[06:50:32.452] [Scheduler] [node=0,inst=0] INFO     Batch #33 is done
+[06:50:32.452] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16860.51MB load: 2.00MB after: 16862.51MB
+[06:50:32.453] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #34 to NPU[0]
+[06:50:32.453] [TraceGenerator] [node=0,inst=0] INFO     Batch #34: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:32.590] [Controller] INFO     NPU[0] iteration 35 finished, 2392857796 cycles, exposed communication 1613637682 cycles.
+[06:50:32.591] [Scheduler] [node=0,inst=0] INFO     Batch #34 is done
+[06:50:32.591] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #35 to NPU[0]
+[06:50:32.592] [TraceGenerator] [node=0,inst=0] INFO     Batch #35: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:32.729] [Controller] INFO     NPU[0] iteration 36 finished, 2456309110 cycles, exposed communication 1664648444 cycles.
+[06:50:32.730] [Scheduler] [node=0,inst=0] INFO     Batch #35 is done
+[06:50:32.730] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #36 to NPU[0]
+[06:50:32.731] [TraceGenerator] [node=0,inst=0] INFO     Batch #36: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:32.870] [Controller] INFO     NPU[0] iteration 37 finished, 2519760424 cycles, exposed communication 1715659014 cycles.
+[06:50:32.872] [Scheduler] [node=0,inst=0] INFO     Batch #36 is done
+[06:50:32.872] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #37 to NPU[0]
+[06:50:32.873] [TraceGenerator] [node=0,inst=0] INFO     Batch #37: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:33.012] [Controller] INFO     NPU[0] iteration 38 finished, 2583211738 cycles, exposed communication 1766669392 cycles.
+[06:50:33.012] [Scheduler] [node=0,inst=0] INFO     Batch #37 is done
+[06:50:33.013] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #38 to NPU[0]
+[06:50:33.014] [TraceGenerator] [node=0,inst=0] INFO     Batch #38: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:33.150] [Controller] INFO     NPU[0] iteration 39 finished, 2646663052 cycles, exposed communication 1817679578 cycles.
+[06:50:33.151] [Scheduler] [node=0,inst=0] INFO     Batch #38 is done
+[06:50:33.151] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #39 to NPU[0]
+[06:50:33.152] [TraceGenerator] [node=0,inst=0] INFO     Batch #39: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:33.285] [Controller] INFO     NPU[0] iteration 40 finished, 2710114366 cycles, exposed communication 1868689572 cycles.
+[06:50:33.286] [Scheduler] [node=0,inst=0] INFO     Batch #39 is done
+[06:50:33.286] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #40 to NPU[0]
+[06:50:33.287] [TraceGenerator] [node=0,inst=0] INFO     Batch #40: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[0, 1]
+[06:50:33.424] [Controller] INFO     NPU[0] iteration 41 finished, 2773565680 cycles, exposed communication 1919699342 cycles.
+[06:50:33.425] [Scheduler] [node=0,inst=0] INFO     Batch #40 is done
+[06:50:33.425] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #41 to NPU[0]
+[06:50:33.426] [TraceGenerator] [node=0,inst=0] INFO     Batch #41: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:33.565] [Controller] INFO     NPU[0] iteration 42 finished, 2837041850 cycles, exposed communication 1971209719 cycles.
+[06:50:33.566] [Scheduler] [node=0,inst=0] INFO     Batch #41 is done
+[06:50:33.566] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #42 to NPU[0]
+[06:50:33.567] [TraceGenerator] [node=0,inst=0] INFO     Batch #42: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:33.701] [Controller] INFO     NPU[0] iteration 43 finished, 2900518020 cycles, exposed communication 2022720032 cycles.
+[06:50:33.702] [Scheduler] [node=0,inst=0] INFO     Batch #42 is done
+[06:50:33.702] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #43 to NPU[0]
+[06:50:33.703] [TraceGenerator] [node=0,inst=0] INFO     Batch #43: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:33.835] [Controller] INFO     NPU[0] iteration 44 finished, 2963994190 cycles, exposed communication 2074230249 cycles.
+[06:50:33.835] [Scheduler] [node=0,inst=0] INFO     Batch #43 is done
+[06:50:33.836] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #44 to NPU[0]
+[06:50:33.837] [TraceGenerator] [node=0,inst=0] INFO     Batch #44: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:33.970] [Controller] INFO     NPU[0] iteration 45 finished, 3027470360 cycles, exposed communication 2125740402 cycles.
+[06:50:33.971] [Scheduler] [node=0,inst=0] INFO     Batch #44 is done
+[06:50:33.972] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #45 to NPU[0]
+[06:50:33.972] [TraceGenerator] [node=0,inst=0] INFO     Batch #45: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[3.0s] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 28.0 tokens/s
+        ├─Running Instance[0]: 1 reqs, Waiting: 3 reqs, Total # 1 NPUs, Each NPU Memory Usage 16862.51 MB (99.990 % Used)
+        └─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[06:50:34.109] [Controller] INFO     NPU[0] iteration 46 finished, 3090946530 cycles, exposed communication 2177250491 cycles.
+[06:50:34.110] [Scheduler] [node=0,inst=0] INFO     Batch #45 is done
+[06:50:34.110] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #46 to NPU[0]
+[06:50:34.111] [TraceGenerator] [node=0,inst=0] INFO     Batch #46: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:34.239] [Controller] INFO     NPU[0] iteration 47 finished, 3154422700 cycles, exposed communication 2228760484 cycles.
+[06:50:34.240] [Scheduler] [node=0,inst=0] INFO     Batch #46 is done
+[06:50:34.240] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #47 to NPU[0]
+[06:50:34.241] [TraceGenerator] [node=0,inst=0] INFO     Batch #47: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:34.371] [Controller] INFO     NPU[0] iteration 48 finished, 3217898870 cycles, exposed communication 2280270413 cycles.
+[06:50:34.372] [Scheduler] [node=0,inst=0] INFO     Batch #47 is done
+[06:50:34.372] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #48 to NPU[0]
+[06:50:34.373] [TraceGenerator] [node=0,inst=0] INFO     Batch #48: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:34.506] [Controller] INFO     NPU[0] iteration 49 finished, 3281375040 cycles, exposed communication 2331780278 cycles.
+[06:50:34.507] [Scheduler] [node=0,inst=0] INFO     Batch #48 is done
+[06:50:34.507] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #49 to NPU[0]
+[06:50:34.508] [TraceGenerator] [node=0,inst=0] INFO     Batch #49: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:34.640] [Controller] INFO     NPU[0] iteration 50 finished, 3344851210 cycles, exposed communication 2383290047 cycles.
+[06:50:34.641] [Scheduler] [node=0,inst=0] INFO     Batch #49 is done
+[06:50:34.641] [Scheduler] [node=0,inst=0] INFO     Eviction of the request #1
+[06:50:34.642] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16862.51MB remove: 772.00MB after: 16090.51MB
+[06:50:34.642] [MemoryModel] [node=0,inst=0] INFO     CPU: used: 0.00MB load: 772.00MB after: 772.00MB
+[06:50:34.642] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16090.51MB load: 2.00MB after: 16092.51MB
+[06:50:34.642] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #50 to NPU[0]
+[06:50:34.643] [TraceGenerator] [node=0,inst=0] INFO     Batch #50: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:34.779] [Controller] INFO     NPU[0] iteration 51 finished, 3411489492 cycles, exposed communication 2437961864 cycles.
+[06:50:34.780] [Scheduler] [node=0,inst=0] INFO     Batch #50 is done
+[06:50:34.781] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #51 to NPU[0]
+[06:50:34.781] [TraceGenerator] [node=0,inst=0] INFO     Batch #51: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:34.910] [Controller] INFO     NPU[0] iteration 52 finished, 3474965662 cycles, exposed communication 2489471505 cycles.
+[06:50:34.911] [Scheduler] [node=0,inst=0] INFO     Batch #51 is done
+[06:50:34.911] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #52 to NPU[0]
+[06:50:34.912] [TraceGenerator] [node=0,inst=0] INFO     Batch #52: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:35.044] [Controller] INFO     NPU[0] iteration 53 finished, 3538441832 cycles, exposed communication 2540981050 cycles.
+[06:50:35.045] [Scheduler] [node=0,inst=0] INFO     Batch #52 is done
+[06:50:35.045] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #53 to NPU[0]
+[06:50:35.046] [TraceGenerator] [node=0,inst=0] INFO     Batch #53: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:35.178] [Controller] INFO     NPU[0] iteration 54 finished, 3601918002 cycles, exposed communication 2592490531 cycles.
+[06:50:35.179] [Scheduler] [node=0,inst=0] INFO     Batch #53 is done
+[06:50:35.179] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #54 to NPU[0]
+[06:50:35.180] [TraceGenerator] [node=0,inst=0] INFO     Batch #54: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:35.314] [Controller] INFO     NPU[0] iteration 55 finished, 3665394172 cycles, exposed communication 2643999948 cycles.
+[06:50:35.315] [Scheduler] [node=0,inst=0] INFO     Batch #54 is done
+[06:50:35.315] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #55 to NPU[0]
+[06:50:35.316] [TraceGenerator] [node=0,inst=0] INFO     Batch #55: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:35.445] [Controller] INFO     NPU[0] iteration 56 finished, 3728870342 cycles, exposed communication 2695509301 cycles.
+[06:50:35.447] [Scheduler] [node=0,inst=0] INFO     Batch #55 is done
+[06:50:35.447] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #56 to NPU[0]
+[06:50:35.448] [TraceGenerator] [node=0,inst=0] INFO     Batch #56: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:35.578] [Controller] INFO     NPU[0] iteration 57 finished, 3792346512 cycles, exposed communication 2747018558 cycles.
+[06:50:35.579] [Scheduler] [node=0,inst=0] INFO     Batch #56 is done
+[06:50:35.579] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #57 to NPU[0]
+[06:50:35.580] [TraceGenerator] [node=0,inst=0] INFO     Batch #57: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:35.713] [Controller] INFO     NPU[0] iteration 58 finished, 3855822682 cycles, exposed communication 2798527751 cycles.
+[06:50:35.713] [Scheduler] [node=0,inst=0] INFO     Batch #57 is done
+[06:50:35.714] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #58 to NPU[0]
+[06:50:35.715] [TraceGenerator] [node=0,inst=0] INFO     Batch #58: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:35.846] [Controller] INFO     NPU[0] iteration 59 finished, 3919298852 cycles, exposed communication 2850036880 cycles.
+[06:50:35.847] [Scheduler] [node=0,inst=0] INFO     Batch #58 is done
+[06:50:35.847] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #59 to NPU[0]
+[06:50:35.848] [TraceGenerator] [node=0,inst=0] INFO     Batch #59: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:35.979] [Controller] INFO     NPU[0] iteration 60 finished, 3982775022 cycles, exposed communication 2901545913 cycles.
+[06:50:35.980] [Scheduler] [node=0,inst=0] INFO     Batch #59 is done
+[06:50:35.980] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #60 to NPU[0]
+[06:50:35.981] [TraceGenerator] [node=0,inst=0] INFO     Batch #60: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:36.115] [Controller] INFO     NPU[0] iteration 61 finished, 4046251192 cycles, exposed communication 2953054882 cycles.
+[06:50:36.115] [Scheduler] [node=0,inst=0] INFO     Batch #60 is done
+[06:50:36.116] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #61 to NPU[0]
+[06:50:36.116] [TraceGenerator] [node=0,inst=0] INFO     Batch #61: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[4.0s] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 16.0 tokens/s
+        ├─Running Instance[0]: 1 reqs, Waiting: 3 reqs, Total # 1 NPUs, Each NPU Memory Usage 16092.51 MB (95.424 % Used)
+        └─Node[0]: Total CPU Memory Usage 772.00 MB, 0.147 % Used 
+[06:50:36.249] [Controller] INFO     NPU[0] iteration 62 finished, 4109727362 cycles, exposed communication 3004563787 cycles.
+[06:50:36.250] [Scheduler] [node=0,inst=0] INFO     Batch #61 is done
+[06:50:36.250] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #62 to NPU[0]
+[06:50:36.251] [TraceGenerator] [node=0,inst=0] INFO     Batch #62: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:36.386] [Controller] INFO     NPU[0] iteration 63 finished, 4173203532 cycles, exposed communication 3056072596 cycles.
+[06:50:36.386] [Scheduler] [node=0,inst=0] INFO     Batch #62 is done
+[06:50:36.387] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #63 to NPU[0]
+[06:50:36.388] [TraceGenerator] [node=0,inst=0] INFO     Batch #63: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:36.521] [Controller] INFO     NPU[0] iteration 64 finished, 4236679702 cycles, exposed communication 3107581341 cycles.
+[06:50:36.522] [Scheduler] [node=0,inst=0] INFO     Batch #63 is done
+[06:50:36.523] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #64 to NPU[0]
+[06:50:36.523] [TraceGenerator] [node=0,inst=0] INFO     Batch #64: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[0]
+[06:50:36.653] [Controller] INFO     NPU[0] iteration 65 finished, 4300155872 cycles, exposed communication 3159090022 cycles.
+[06:50:36.653] [Scheduler] [node=0,inst=0] INFO     Batch #64 is done
+[06:50:36.654] [Scheduler] [node=0,inst=0] INFO     Request #0 is done
+[06:50:36.654] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16092.51MB remove: 776.00MB after: 15316.51MB
+[06:50:36.654] [Scheduler] [node=0,inst=0] INFO     Loading the request #1
+[06:50:36.655] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 15316.51MB load: 514.00MB after: 15830.51MB
+[06:50:36.655] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 15830.51MB load: 772.00MB after: 16602.51MB
+[06:50:36.655] [MemoryModel] [node=0,inst=0] INFO     CPU: used: 772.00MB remove: 772.00MB after: 0.00MB
+[06:50:36.655] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #65 to NPU[0]
+[06:50:36.656] [TraceGenerator] [node=0,inst=0] INFO     Batch #65: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=4096 req_ids=[1, 2]
+[06:50:36.790] [Controller] INFO     NPU[0] iteration 66 finished, 4412117337 cycles, exposed communication 3170729760 cycles.
+[06:50:36.790] [Scheduler] [node=0,inst=0] INFO     Batch #65 is done
+[06:50:36.791] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16602.51MB load: 256.00MB after: 16858.51MB
+[06:50:36.791] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #66 to NPU[0]
+[06:50:36.792] [TraceGenerator] [node=0,inst=0] INFO     Batch #66: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2050 req_ids=[1, 2]
+[06:50:36.927] [Controller] INFO     NPU[0] iteration 67 finished, 4518482180 cycles, exposed communication 3177061103 cycles.
+[06:50:36.928] [Scheduler] [node=0,inst=0] INFO     Batch #66 is done
+[06:50:36.928] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16858.51MB load: 2.00MB after: 16860.51MB
+[06:50:36.929] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #67 to NPU[0]
+[06:50:36.930] [TraceGenerator] [node=0,inst=0] INFO     Batch #67: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:37.064] [Controller] INFO     NPU[0] iteration 68 finished, 4581933494 cycles, exposed communication 3228074201 cycles.
+[06:50:37.064] [Scheduler] [node=0,inst=0] INFO     Batch #67 is done
+[06:50:37.065] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #68 to NPU[0]
+[06:50:37.065] [TraceGenerator] [node=0,inst=0] INFO     Batch #68: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:37.199] [Controller] INFO     NPU[0] iteration 69 finished, 4645384808 cycles, exposed communication 3279087107 cycles.
+[06:50:37.200] [Scheduler] [node=0,inst=0] INFO     Batch #68 is done
+[06:50:37.200] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #69 to NPU[0]
+[06:50:37.201] [TraceGenerator] [node=0,inst=0] INFO     Batch #69: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:37.337] [Controller] INFO     NPU[0] iteration 70 finished, 4708836122 cycles, exposed communication 3330099821 cycles.
+[06:50:37.338] [Scheduler] [node=0,inst=0] INFO     Batch #69 is done
+[06:50:37.339] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #70 to NPU[0]
+[06:50:37.339] [TraceGenerator] [node=0,inst=0] INFO     Batch #70: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:37.474] [Controller] INFO     NPU[0] iteration 71 finished, 4772287436 cycles, exposed communication 3381112343 cycles.
+[06:50:37.474] [Scheduler] [node=0,inst=0] INFO     Batch #70 is done
+[06:50:37.475] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #71 to NPU[0]
+[06:50:37.475] [TraceGenerator] [node=0,inst=0] INFO     Batch #71: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:37.609] [Controller] INFO     NPU[0] iteration 72 finished, 4835738750 cycles, exposed communication 3432124641 cycles.
+[06:50:37.610] [Scheduler] [node=0,inst=0] INFO     Batch #71 is done
+[06:50:37.610] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #72 to NPU[0]
+[06:50:37.611] [TraceGenerator] [node=0,inst=0] INFO     Batch #72: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:37.746] [Controller] INFO     NPU[0] iteration 73 finished, 4899190064 cycles, exposed communication 3483136747 cycles.
+[06:50:37.747] [Scheduler] [node=0,inst=0] INFO     Batch #72 is done
+[06:50:37.748] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #73 to NPU[0]
+[06:50:37.749] [TraceGenerator] [node=0,inst=0] INFO     Batch #73: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:37.879] [Controller] INFO     NPU[0] iteration 74 finished, 4962641378 cycles, exposed communication 3534148661 cycles.
+[06:50:37.880] [Scheduler] [node=0,inst=0] INFO     Batch #73 is done
+[06:50:37.880] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #74 to NPU[0]
+[06:50:37.881] [TraceGenerator] [node=0,inst=0] INFO     Batch #74: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:38.015] [Controller] INFO     NPU[0] iteration 75 finished, 5026092692 cycles, exposed communication 3585160383 cycles.
+[06:50:38.016] [Scheduler] [node=0,inst=0] INFO     Batch #74 is done
+[06:50:38.016] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #75 to NPU[0]
+[06:50:38.017] [TraceGenerator] [node=0,inst=0] INFO     Batch #75: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[5.0s] Avg prompt throughput: 6144.0 tokens/s, Avg generation throughput: 23.0 tokens/s
+        ├─Running Instance[0]: 2 reqs, Waiting: 1 reqs, Total # 1 NPUs, Each NPU Memory Usage 16860.51 MB (99.978 % Used)
+        └─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[06:50:38.151] [Controller] INFO     NPU[0] iteration 76 finished, 5089544006 cycles, exposed communication 3636171881 cycles.
+[06:50:38.152] [Scheduler] [node=0,inst=0] INFO     Batch #75 is done
+[06:50:38.152] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #76 to NPU[0]
+[06:50:38.153] [TraceGenerator] [node=0,inst=0] INFO     Batch #76: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:38.284] [Controller] INFO     NPU[0] iteration 77 finished, 5152995320 cycles, exposed communication 3687183187 cycles.
+[06:50:38.284] [Scheduler] [node=0,inst=0] INFO     Batch #76 is done
+[06:50:38.285] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #77 to NPU[0]
+[06:50:38.286] [TraceGenerator] [node=0,inst=0] INFO     Batch #77: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:38.418] [Controller] INFO     NPU[0] iteration 78 finished, 5216446634 cycles, exposed communication 3738194301 cycles.
+[06:50:38.418] [Scheduler] [node=0,inst=0] INFO     Batch #77 is done
+[06:50:38.419] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #78 to NPU[0]
+[06:50:38.420] [TraceGenerator] [node=0,inst=0] INFO     Batch #78: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:38.553] [Controller] INFO     NPU[0] iteration 79 finished, 5279897948 cycles, exposed communication 3789205223 cycles.
+[06:50:38.553] [Scheduler] [node=0,inst=0] INFO     Batch #78 is done
+[06:50:38.554] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #79 to NPU[0]
+[06:50:38.555] [TraceGenerator] [node=0,inst=0] INFO     Batch #79: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:38.686] [Controller] INFO     NPU[0] iteration 80 finished, 5343349262 cycles, exposed communication 3840215921 cycles.
+[06:50:38.687] [Scheduler] [node=0,inst=0] INFO     Batch #79 is done
+[06:50:38.688] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #80 to NPU[0]
+[06:50:38.688] [TraceGenerator] [node=0,inst=0] INFO     Batch #80: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:38.823] [Controller] INFO     NPU[0] iteration 81 finished, 5406800576 cycles, exposed communication 3891226427 cycles.
+[06:50:38.824] [Scheduler] [node=0,inst=0] INFO     Batch #80 is done
+[06:50:38.824] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16860.51MB load: 2.00MB after: 16862.51MB
+[06:50:38.824] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #81 to NPU[0]
+[06:50:38.825] [TraceGenerator] [node=0,inst=0] INFO     Batch #81: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:38.959] [Controller] INFO     NPU[0] iteration 82 finished, 5470251890 cycles, exposed communication 3942236741 cycles.
+[06:50:38.960] [Scheduler] [node=0,inst=0] INFO     Batch #81 is done
+[06:50:38.961] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #82 to NPU[0]
+[06:50:38.961] [TraceGenerator] [node=0,inst=0] INFO     Batch #82: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[1, 2]
+[06:50:39.097] [Controller] INFO     NPU[0] iteration 83 finished, 5533703204 cycles, exposed communication 3993246863 cycles.
+[06:50:39.098] [Scheduler] [node=0,inst=0] INFO     Batch #82 is done
+[06:50:39.099] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #83 to NPU[0]
+[06:50:39.099] [TraceGenerator] [node=0,inst=0] INFO     Batch #83: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[1]
+[06:50:39.242] [Controller] INFO     NPU[0] iteration 84 finished, 5597179374 cycles, exposed communication 4044756408 cycles.
+[06:50:39.243] [Scheduler] [node=0,inst=0] INFO     Batch #83 is done
+[06:50:39.243] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #84 to NPU[0]
+[06:50:39.245] [TraceGenerator] [node=0,inst=0] INFO     Batch #84: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[1]
+[06:50:39.394] [Controller] INFO     NPU[0] iteration 85 finished, 5660655544 cycles, exposed communication 4096265889 cycles.
+[06:50:39.395] [Scheduler] [node=0,inst=0] INFO     Batch #84 is done
+[06:50:39.395] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #85 to NPU[0]
+[06:50:39.396] [TraceGenerator] [node=0,inst=0] INFO     Batch #85: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[1]
+[06:50:39.523] [Controller] INFO     NPU[0] iteration 86 finished, 5724131714 cycles, exposed communication 4147775306 cycles.
+[06:50:39.523] [Scheduler] [node=0,inst=0] INFO     Batch #85 is done
+[06:50:39.524] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #86 to NPU[0]
+[06:50:39.524] [TraceGenerator] [node=0,inst=0] INFO     Batch #86: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[1]
+[06:50:39.652] [Controller] INFO     NPU[0] iteration 87 finished, 5787607884 cycles, exposed communication 4199284659 cycles.
+[06:50:39.653] [Scheduler] [node=0,inst=0] INFO     Batch #86 is done
+[06:50:39.654] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #87 to NPU[0]
+[06:50:39.655] [TraceGenerator] [node=0,inst=0] INFO     Batch #87: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[1]
+[06:50:39.789] [Controller] INFO     NPU[0] iteration 88 finished, 5851084054 cycles, exposed communication 4250793916 cycles.
+[06:50:39.790] [Scheduler] [node=0,inst=0] INFO     Batch #87 is done
+[06:50:39.790] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #88 to NPU[0]
+[06:50:39.791] [TraceGenerator] [node=0,inst=0] INFO     Batch #88: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[1]
+[06:50:39.925] [Controller] INFO     NPU[0] iteration 89 finished, 5914560224 cycles, exposed communication 4302303109 cycles.
+[06:50:39.925] [Scheduler] [node=0,inst=0] INFO     Batch #88 is done
+[06:50:39.926] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #89 to NPU[0]
+[06:50:39.926] [TraceGenerator] [node=0,inst=0] INFO     Batch #89: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[1]
+[06:50:40.059] [Controller] INFO     NPU[0] iteration 90 finished, 5978036394 cycles, exposed communication 4353812238 cycles.
+[06:50:40.060] [Scheduler] [node=0,inst=0] INFO     Batch #89 is done
+[06:50:40.061] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #90 to NPU[0]
+[06:50:40.061] [TraceGenerator] [node=0,inst=0] INFO     Batch #90: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[1]
+[06:50:40.194] [Controller] INFO     NPU[0] iteration 91 finished, 6041512564 cycles, exposed communication 4405321271 cycles.
+[06:50:40.195] [Scheduler] [node=0,inst=0] INFO     Batch #90 is done
+[06:50:40.195] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #91 to NPU[0]
+[06:50:40.196] [TraceGenerator] [node=0,inst=0] INFO     Batch #91: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[1]
+[6.0s] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 24.0 tokens/s
+        ├─Running Instance[0]: 1 reqs, Waiting: 2 reqs, Total # 1 NPUs, Each NPU Memory Usage 16862.51 MB (99.990 % Used)
+        └─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[06:50:40.329] [Controller] INFO     NPU[0] iteration 92 finished, 6104988734 cycles, exposed communication 4456830240 cycles.
+[06:50:40.330] [Scheduler] [node=0,inst=0] INFO     Batch #91 is done
+[06:50:40.330] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #92 to NPU[0]
+[06:50:40.331] [TraceGenerator] [node=0,inst=0] INFO     Batch #92: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[1]
+[06:50:40.462] [Controller] INFO     NPU[0] iteration 93 finished, 6168464904 cycles, exposed communication 4508339145 cycles.
+[06:50:40.463] [Scheduler] [node=0,inst=0] INFO     Batch #92 is done
+[06:50:40.463] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #93 to NPU[0]
+[06:50:40.464] [TraceGenerator] [node=0,inst=0] INFO     Batch #93: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[1]
+[06:50:40.598] [Controller] INFO     NPU[0] iteration 94 finished, 6231941074 cycles, exposed communication 4559847954 cycles.
+[06:50:40.599] [Scheduler] [node=0,inst=0] INFO     Batch #93 is done
+[06:50:40.599] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #94 to NPU[0]
+[06:50:40.600] [TraceGenerator] [node=0,inst=0] INFO     Batch #94: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[1]
+[06:50:40.731] [Controller] INFO     NPU[0] iteration 95 finished, 6295417244 cycles, exposed communication 4611356699 cycles.
+[06:50:40.732] [Scheduler] [node=0,inst=0] INFO     Batch #94 is done
+[06:50:40.732] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #95 to NPU[0]
+[06:50:40.733] [TraceGenerator] [node=0,inst=0] INFO     Batch #95: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[1]
+[06:50:40.862] [Controller] INFO     NPU[0] iteration 96 finished, 6358893414 cycles, exposed communication 4662865380 cycles.
+[06:50:40.863] [Scheduler] [node=0,inst=0] INFO     Batch #95 is done
+[06:50:40.864] [Scheduler] [node=0,inst=0] INFO     Request #1 is done
+[06:50:40.864] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16862.51MB remove: 776.00MB after: 16086.51MB
+[06:50:40.864] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16086.51MB load: 514.00MB after: 16600.51MB
+[06:50:40.865] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #96 to NPU[0]
+[06:50:40.865] [TraceGenerator] [node=0,inst=0] INFO     Batch #96: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=4096 req_ids=[2, 3]
+[06:50:41.000] [Controller] INFO     NPU[0] iteration 97 finished, 6467685823 cycles, exposed communication 4671343230 cycles.
+[06:50:41.000] [Scheduler] [node=0,inst=0] INFO     Batch #96 is done
+[06:50:41.001] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16600.51MB load: 256.00MB after: 16856.51MB
+[06:50:41.001] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #97 to NPU[0]
+[06:50:41.002] [TraceGenerator] [node=0,inst=0] INFO     Batch #97: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2050 req_ids=[2, 3]
+[06:50:41.134] [Controller] INFO     NPU[0] iteration 98 finished, 6574043978 cycles, exposed communication 4677674573 cycles.
+[06:50:41.135] [Scheduler] [node=0,inst=0] INFO     Batch #97 is done
+[06:50:41.135] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16856.51MB load: 2.00MB after: 16858.51MB
+[06:50:41.136] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #98 to NPU[0]
+[06:50:41.136] [TraceGenerator] [node=0,inst=0] INFO     Batch #98: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:41.268] [Controller] INFO     NPU[0] iteration 99 finished, 6637495292 cycles, exposed communication 4728689303 cycles.
+[06:50:41.269] [Scheduler] [node=0,inst=0] INFO     Batch #98 is done
+[06:50:41.270] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #99 to NPU[0]
+[06:50:41.270] [TraceGenerator] [node=0,inst=0] INFO     Batch #99: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:41.403] [Controller] INFO     NPU[0] iteration 100 finished, 6700946606 cycles, exposed communication 4779703841 cycles.
+[06:50:41.404] [Scheduler] [node=0,inst=0] INFO     Batch #99 is done
+[06:50:41.404] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #100 to NPU[0]
+[06:50:41.405] [TraceGenerator] [node=0,inst=0] INFO     Batch #100: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:41.538] [Controller] INFO     NPU[0] iteration 101 finished, 6764397920 cycles, exposed communication 4830718187 cycles.
+[06:50:41.539] [Scheduler] [node=0,inst=0] INFO     Batch #100 is done
+[06:50:41.539] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #101 to NPU[0]
+[06:50:41.540] [TraceGenerator] [node=0,inst=0] INFO     Batch #101: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:41.674] [Controller] INFO     NPU[0] iteration 102 finished, 6827849234 cycles, exposed communication 4881732341 cycles.
+[06:50:41.674] [Scheduler] [node=0,inst=0] INFO     Batch #101 is done
+[06:50:41.675] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #102 to NPU[0]
+[06:50:41.676] [TraceGenerator] [node=0,inst=0] INFO     Batch #102: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:41.808] [Controller] INFO     NPU[0] iteration 103 finished, 6891300548 cycles, exposed communication 4932746271 cycles.
+[06:50:41.809] [Scheduler] [node=0,inst=0] INFO     Batch #102 is done
+[06:50:41.809] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #103 to NPU[0]
+[06:50:41.810] [TraceGenerator] [node=0,inst=0] INFO     Batch #103: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:41.948] [Controller] INFO     NPU[0] iteration 104 finished, 6954751862 cycles, exposed communication 4983760009 cycles.
+[06:50:41.949] [Scheduler] [node=0,inst=0] INFO     Batch #103 is done
+[06:50:41.949] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #104 to NPU[0]
+[06:50:41.950] [TraceGenerator] [node=0,inst=0] INFO     Batch #104: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:42.100] [Controller] INFO     NPU[0] iteration 105 finished, 7018203176 cycles, exposed communication 5034773555 cycles.
+[06:50:42.101] [Scheduler] [node=0,inst=0] INFO     Batch #104 is done
+[06:50:42.102] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #105 to NPU[0]
+[06:50:42.103] [TraceGenerator] [node=0,inst=0] INFO     Batch #105: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[7.0s] Avg prompt throughput: 6144.0 tokens/s, Avg generation throughput: 22.0 tokens/s
+        ├─Running Instance[0]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16858.51 MB (99.966 % Used)
+        └─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[06:50:42.234] [Controller] INFO     NPU[0] iteration 106 finished, 7081654490 cycles, exposed communication 5085786909 cycles.
+[06:50:42.235] [Scheduler] [node=0,inst=0] INFO     Batch #105 is done
+[06:50:42.235] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #106 to NPU[0]
+[06:50:42.236] [TraceGenerator] [node=0,inst=0] INFO     Batch #106: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:42.364] [Controller] INFO     NPU[0] iteration 107 finished, 7145105804 cycles, exposed communication 5136800039 cycles.
+[06:50:42.364] [Scheduler] [node=0,inst=0] INFO     Batch #106 is done
+[06:50:42.365] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #107 to NPU[0]
+[06:50:42.365] [TraceGenerator] [node=0,inst=0] INFO     Batch #107: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:42.495] [Controller] INFO     NPU[0] iteration 108 finished, 7208557118 cycles, exposed communication 5187812977 cycles.
+[06:50:42.496] [Scheduler] [node=0,inst=0] INFO     Batch #107 is done
+[06:50:42.496] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #108 to NPU[0]
+[06:50:42.497] [TraceGenerator] [node=0,inst=0] INFO     Batch #108: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:42.629] [Controller] INFO     NPU[0] iteration 109 finished, 7272008432 cycles, exposed communication 5238825723 cycles.
+[06:50:42.630] [Scheduler] [node=0,inst=0] INFO     Batch #108 is done
+[06:50:42.630] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #109 to NPU[0]
+[06:50:42.631] [TraceGenerator] [node=0,inst=0] INFO     Batch #109: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:42.763] [Controller] INFO     NPU[0] iteration 110 finished, 7335459746 cycles, exposed communication 5289838277 cycles.
+[06:50:42.764] [Scheduler] [node=0,inst=0] INFO     Batch #109 is done
+[06:50:42.764] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #110 to NPU[0]
+[06:50:42.764] [TraceGenerator] [node=0,inst=0] INFO     Batch #110: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:42.897] [Controller] INFO     NPU[0] iteration 111 finished, 7398911060 cycles, exposed communication 5340850607 cycles.
+[06:50:42.898] [Scheduler] [node=0,inst=0] INFO     Batch #110 is done
+[06:50:42.898] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #111 to NPU[0]
+[06:50:42.899] [TraceGenerator] [node=0,inst=0] INFO     Batch #111: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:43.030] [Controller] INFO     NPU[0] iteration 112 finished, 7462362374 cycles, exposed communication 5391862745 cycles.
+[06:50:43.031] [Scheduler] [node=0,inst=0] INFO     Batch #111 is done
+[06:50:43.031] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16858.51MB load: 2.00MB after: 16860.51MB
+[06:50:43.031] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #112 to NPU[0]
+[06:50:43.032] [TraceGenerator] [node=0,inst=0] INFO     Batch #112: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:43.164] [Controller] INFO     NPU[0] iteration 113 finished, 7525813688 cycles, exposed communication 5442874691 cycles.
+[06:50:43.165] [Scheduler] [node=0,inst=0] INFO     Batch #112 is done
+[06:50:43.165] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #113 to NPU[0]
+[06:50:43.166] [TraceGenerator] [node=0,inst=0] INFO     Batch #113: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:43.298] [Controller] INFO     NPU[0] iteration 114 finished, 7589265002 cycles, exposed communication 5493886445 cycles.
+[06:50:43.299] [Scheduler] [node=0,inst=0] INFO     Batch #113 is done
+[06:50:43.299] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16860.51MB load: 2.00MB after: 16862.51MB
+[06:50:43.299] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #114 to NPU[0]
+[06:50:43.300] [TraceGenerator] [node=0,inst=0] INFO     Batch #114: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:43.434] [Controller] INFO     NPU[0] iteration 115 finished, 7652716316 cycles, exposed communication 5544897975 cycles.
+[06:50:43.435] [Scheduler] [node=0,inst=0] INFO     Batch #114 is done
+[06:50:43.435] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #115 to NPU[0]
+[06:50:43.436] [TraceGenerator] [node=0,inst=0] INFO     Batch #115: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:43.567] [Controller] INFO     NPU[0] iteration 116 finished, 7716167630 cycles, exposed communication 5595909313 cycles.
+[06:50:43.568] [Scheduler] [node=0,inst=0] INFO     Batch #115 is done
+[06:50:43.568] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #116 to NPU[0]
+[06:50:43.569] [TraceGenerator] [node=0,inst=0] INFO     Batch #116: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:43.701] [Controller] INFO     NPU[0] iteration 117 finished, 7779618944 cycles, exposed communication 5646920459 cycles.
+[06:50:43.702] [Scheduler] [node=0,inst=0] INFO     Batch #116 is done
+[06:50:43.702] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #117 to NPU[0]
+[06:50:43.703] [TraceGenerator] [node=0,inst=0] INFO     Batch #117: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:43.835] [Controller] INFO     NPU[0] iteration 118 finished, 7843070258 cycles, exposed communication 5697931413 cycles.
+[06:50:43.836] [Scheduler] [node=0,inst=0] INFO     Batch #117 is done
+[06:50:43.837] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #118 to NPU[0]
+[06:50:43.838] [TraceGenerator] [node=0,inst=0] INFO     Batch #118: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:43.970] [Controller] INFO     NPU[0] iteration 119 finished, 7906521572 cycles, exposed communication 5748942143 cycles.
+[06:50:43.971] [Scheduler] [node=0,inst=0] INFO     Batch #118 is done
+[06:50:43.971] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #119 to NPU[0]
+[06:50:43.972] [TraceGenerator] [node=0,inst=0] INFO     Batch #119: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:44.104] [Controller] INFO     NPU[0] iteration 120 finished, 7969972886 cycles, exposed communication 5799952681 cycles.
+[06:50:44.105] [Scheduler] [node=0,inst=0] INFO     Batch #119 is done
+[06:50:44.105] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #120 to NPU[0]
+[06:50:44.106] [TraceGenerator] [node=0,inst=0] INFO     Batch #120: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:44.241] [Controller] INFO     NPU[0] iteration 121 finished, 8033424200 cycles, exposed communication 5850963027 cycles.
+[06:50:44.242] [Scheduler] [node=0,inst=0] INFO     Batch #120 is done
+[06:50:44.242] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #121 to NPU[0]
+[06:50:44.243] [TraceGenerator] [node=0,inst=0] INFO     Batch #121: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[8.0s] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 32.0 tokens/s
+        ├─Running Instance[0]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16862.51 MB (99.990 % Used)
+        └─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[06:50:44.378] [Controller] INFO     NPU[0] iteration 122 finished, 8096875514 cycles, exposed communication 5901973181 cycles.
+[06:50:44.378] [Scheduler] [node=0,inst=0] INFO     Batch #121 is done
+[06:50:44.379] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #122 to NPU[0]
+[06:50:44.380] [TraceGenerator] [node=0,inst=0] INFO     Batch #122: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:44.506] [Controller] INFO     NPU[0] iteration 123 finished, 8160326828 cycles, exposed communication 5952983143 cycles.
+[06:50:44.506] [Scheduler] [node=0,inst=0] INFO     Batch #122 is done
+[06:50:44.507] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #123 to NPU[0]
+[06:50:44.508] [TraceGenerator] [node=0,inst=0] INFO     Batch #123: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:44.640] [Controller] INFO     NPU[0] iteration 124 finished, 8223778142 cycles, exposed communication 6003992881 cycles.
+[06:50:44.640] [Scheduler] [node=0,inst=0] INFO     Batch #123 is done
+[06:50:44.641] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #124 to NPU[0]
+[06:50:44.642] [TraceGenerator] [node=0,inst=0] INFO     Batch #124: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:44.775] [Controller] INFO     NPU[0] iteration 125 finished, 8287229456 cycles, exposed communication 6055002427 cycles.
+[06:50:44.776] [Scheduler] [node=0,inst=0] INFO     Batch #124 is done
+[06:50:44.776] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #125 to NPU[0]
+[06:50:44.777] [TraceGenerator] [node=0,inst=0] INFO     Batch #125: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:44.910] [Controller] INFO     NPU[0] iteration 126 finished, 8350680770 cycles, exposed communication 6106011781 cycles.
+[06:50:44.910] [Scheduler] [node=0,inst=0] INFO     Batch #125 is done
+[06:50:44.911] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #126 to NPU[0]
+[06:50:44.911] [TraceGenerator] [node=0,inst=0] INFO     Batch #126: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:45.044] [Controller] INFO     NPU[0] iteration 127 finished, 8414132084 cycles, exposed communication 6157020943 cycles.
+[06:50:45.045] [Scheduler] [node=0,inst=0] INFO     Batch #126 is done
+[06:50:45.045] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #127 to NPU[0]
+[06:50:45.046] [TraceGenerator] [node=0,inst=0] INFO     Batch #127: model=meta-llama/Llama-3.1-8B num_reqs=2 total_len=2 req_ids=[2, 3]
+[06:50:45.179] [Controller] INFO     NPU[0] iteration 128 finished, 8477583398 cycles, exposed communication 6208029881 cycles.
+[06:50:45.180] [Scheduler] [node=0,inst=0] INFO     Batch #127 is done
+[06:50:45.181] [Scheduler] [node=0,inst=0] INFO     Eviction of the request #3
+[06:50:45.181] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16862.51MB remove: 772.00MB after: 16090.51MB
+[06:50:45.181] [MemoryModel] [node=0,inst=0] INFO     CPU: used: 0.00MB load: 772.00MB after: 772.00MB
+[06:50:45.181] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16090.51MB load: 2.00MB after: 16092.51MB
+[06:50:45.182] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #128 to NPU[0]
+[06:50:45.182] [TraceGenerator] [node=0,inst=0] INFO     Batch #128: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[06:50:45.315] [Controller] INFO     NPU[0] iteration 129 finished, 8544221680 cycles, exposed communication 6262701698 cycles.
+[06:50:45.316] [Scheduler] [node=0,inst=0] INFO     Batch #128 is done
+[06:50:45.316] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #129 to NPU[0]
+[06:50:45.317] [TraceGenerator] [node=0,inst=0] INFO     Batch #129: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[06:50:45.450] [Controller] INFO     NPU[0] iteration 130 finished, 8607697850 cycles, exposed communication 6314211339 cycles.
+[06:50:45.451] [Scheduler] [node=0,inst=0] INFO     Batch #129 is done
+[06:50:45.452] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #130 to NPU[0]
+[06:50:45.452] [TraceGenerator] [node=0,inst=0] INFO     Batch #130: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[06:50:45.586] [Controller] INFO     NPU[0] iteration 131 finished, 8671174020 cycles, exposed communication 6365720884 cycles.
+[06:50:45.587] [Scheduler] [node=0,inst=0] INFO     Batch #130 is done
+[06:50:45.587] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #131 to NPU[0]
+[06:50:45.588] [TraceGenerator] [node=0,inst=0] INFO     Batch #131: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[06:50:45.719] [Controller] INFO     NPU[0] iteration 132 finished, 8734650190 cycles, exposed communication 6417230365 cycles.
+[06:50:45.720] [Scheduler] [node=0,inst=0] INFO     Batch #131 is done
+[06:50:45.720] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #132 to NPU[0]
+[06:50:45.721] [TraceGenerator] [node=0,inst=0] INFO     Batch #132: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[06:50:45.856] [Controller] INFO     NPU[0] iteration 133 finished, 8798126360 cycles, exposed communication 6468739782 cycles.
+[06:50:45.857] [Scheduler] [node=0,inst=0] INFO     Batch #132 is done
+[06:50:45.858] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #133 to NPU[0]
+[06:50:45.858] [TraceGenerator] [node=0,inst=0] INFO     Batch #133: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[06:50:45.988] [Controller] INFO     NPU[0] iteration 134 finished, 8861602530 cycles, exposed communication 6520249135 cycles.
+[06:50:45.989] [Scheduler] [node=0,inst=0] INFO     Batch #133 is done
+[06:50:45.989] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #134 to NPU[0]
+[06:50:45.990] [TraceGenerator] [node=0,inst=0] INFO     Batch #134: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[06:50:46.122] [Controller] INFO     NPU[0] iteration 135 finished, 8925078700 cycles, exposed communication 6571758392 cycles.
+[06:50:46.123] [Scheduler] [node=0,inst=0] INFO     Batch #134 is done
+[06:50:46.123] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #135 to NPU[0]
+[06:50:46.124] [TraceGenerator] [node=0,inst=0] INFO     Batch #135: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[06:50:46.256] [Controller] INFO     NPU[0] iteration 136 finished, 8988554870 cycles, exposed communication 6623267585 cycles.
+[06:50:46.256] [Scheduler] [node=0,inst=0] INFO     Batch #135 is done
+[06:50:46.257] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #136 to NPU[0]
+[06:50:46.258] [TraceGenerator] [node=0,inst=0] INFO     Batch #136: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[06:50:46.389] [Controller] INFO     NPU[0] iteration 137 finished, 9052031040 cycles, exposed communication 6674776714 cycles.
+[06:50:46.390] [Scheduler] [node=0,inst=0] INFO     Batch #136 is done
+[06:50:46.390] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #137 to NPU[0]
+[06:50:46.391] [TraceGenerator] [node=0,inst=0] INFO     Batch #137: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[9.0s] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 23.0 tokens/s
+        ├─Running Instance[0]: 1 reqs, Waiting: 1 reqs, Total # 1 NPUs, Each NPU Memory Usage 16092.51 MB (95.424 % Used)
+        └─Node[0]: Total CPU Memory Usage 772.00 MB, 0.147 % Used 
+[06:50:46.523] [Controller] INFO     NPU[0] iteration 138 finished, 9115507210 cycles, exposed communication 6726285747 cycles.
+[06:50:46.524] [Scheduler] [node=0,inst=0] INFO     Batch #137 is done
+[06:50:46.524] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #138 to NPU[0]
+[06:50:46.525] [TraceGenerator] [node=0,inst=0] INFO     Batch #138: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[06:50:46.655] [Controller] INFO     NPU[0] iteration 139 finished, 9178983380 cycles, exposed communication 6777794716 cycles.
+[06:50:46.656] [Scheduler] [node=0,inst=0] INFO     Batch #138 is done
+[06:50:46.656] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #139 to NPU[0]
+[06:50:46.657] [TraceGenerator] [node=0,inst=0] INFO     Batch #139: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[06:50:46.784] [Controller] INFO     NPU[0] iteration 140 finished, 9242459550 cycles, exposed communication 6829303621 cycles.
+[06:50:46.785] [Scheduler] [node=0,inst=0] INFO     Batch #139 is done
+[06:50:46.785] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #140 to NPU[0]
+[06:50:46.786] [TraceGenerator] [node=0,inst=0] INFO     Batch #140: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[06:50:46.915] [Controller] INFO     NPU[0] iteration 141 finished, 9305935720 cycles, exposed communication 6880812430 cycles.
+[06:50:46.916] [Scheduler] [node=0,inst=0] INFO     Batch #140 is done
+[06:50:46.917] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #141 to NPU[0]
+[06:50:46.917] [TraceGenerator] [node=0,inst=0] INFO     Batch #141: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[06:50:47.050] [Controller] INFO     NPU[0] iteration 142 finished, 9369411890 cycles, exposed communication 6932321175 cycles.
+[06:50:47.051] [Scheduler] [node=0,inst=0] INFO     Batch #141 is done
+[06:50:47.051] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #142 to NPU[0]
+[06:50:47.052] [TraceGenerator] [node=0,inst=0] INFO     Batch #142: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[2]
+[06:50:47.185] [Controller] INFO     NPU[0] iteration 143 finished, 9432888060 cycles, exposed communication 6983829856 cycles.
+[06:50:47.185] [Scheduler] [node=0,inst=0] INFO     Batch #142 is done
+[06:50:47.186] [Scheduler] [node=0,inst=0] INFO     Request #2 is done
+[06:50:47.186] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16092.51MB remove: 776.00MB after: 15316.51MB
+[06:50:47.186] [Scheduler] [node=0,inst=0] INFO     Loading the request #3
+[06:50:47.187] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 15316.51MB load: 772.00MB after: 16088.51MB
+[06:50:47.187] [MemoryModel] [node=0,inst=0] INFO     CPU: used: 772.00MB remove: 772.00MB after: 0.00MB
+[06:50:47.187] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #143 to NPU[0]
+[06:50:47.188] [TraceGenerator] [node=0,inst=0] INFO     Batch #143: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:47.321] [Controller] INFO     NPU[0] iteration 144 finished, 9499526342 cycles, exposed communication 7038503017 cycles.
+[06:50:47.322] [Scheduler] [node=0,inst=0] INFO     Batch #143 is done
+[06:50:47.322] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #144 to NPU[0]
+[06:50:47.323] [TraceGenerator] [node=0,inst=0] INFO     Batch #144: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:47.456] [Controller] INFO     NPU[0] iteration 145 finished, 9563002512 cycles, exposed communication 7090013970 cycles.
+[06:50:47.457] [Scheduler] [node=0,inst=0] INFO     Batch #144 is done
+[06:50:47.457] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16088.51MB load: 2.00MB after: 16090.51MB
+[06:50:47.457] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #145 to NPU[0]
+[06:50:47.458] [TraceGenerator] [node=0,inst=0] INFO     Batch #145: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:47.592] [Controller] INFO     NPU[0] iteration 146 finished, 9626478682 cycles, exposed communication 7141524859 cycles.
+[06:50:47.593] [Scheduler] [node=0,inst=0] INFO     Batch #145 is done
+[06:50:47.593] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #146 to NPU[0]
+[06:50:47.594] [TraceGenerator] [node=0,inst=0] INFO     Batch #146: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:47.727] [Controller] INFO     NPU[0] iteration 147 finished, 9689954852 cycles, exposed communication 7193035684 cycles.
+[06:50:47.728] [Scheduler] [node=0,inst=0] INFO     Batch #146 is done
+[06:50:47.728] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #147 to NPU[0]
+[06:50:47.729] [TraceGenerator] [node=0,inst=0] INFO     Batch #147: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:47.863] [Controller] INFO     NPU[0] iteration 148 finished, 9753431022 cycles, exposed communication 7244546413 cycles.
+[06:50:47.864] [Scheduler] [node=0,inst=0] INFO     Batch #147 is done
+[06:50:47.864] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #148 to NPU[0]
+[06:50:47.865] [TraceGenerator] [node=0,inst=0] INFO     Batch #148: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:47.998] [Controller] INFO     NPU[0] iteration 149 finished, 9816907192 cycles, exposed communication 7296057078 cycles.
+[06:50:47.999] [Scheduler] [node=0,inst=0] INFO     Batch #148 is done
+[06:50:48.000] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #149 to NPU[0]
+[06:50:48.000] [TraceGenerator] [node=0,inst=0] INFO     Batch #149: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:48.132] [Controller] INFO     NPU[0] iteration 150 finished, 9880383362 cycles, exposed communication 7347567679 cycles.
+[06:50:48.133] [Scheduler] [node=0,inst=0] INFO     Batch #149 is done
+[06:50:48.133] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #150 to NPU[0]
+[06:50:48.134] [TraceGenerator] [node=0,inst=0] INFO     Batch #150: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:48.267] [Controller] INFO     NPU[0] iteration 151 finished, 9943859532 cycles, exposed communication 7399078216 cycles.
+[06:50:48.268] [Scheduler] [node=0,inst=0] INFO     Batch #150 is done
+[06:50:48.268] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #151 to NPU[0]
+[06:50:48.269] [TraceGenerator] [node=0,inst=0] INFO     Batch #151: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:48.403] [Controller] INFO     NPU[0] iteration 152 finished, 10007335702 cycles, exposed communication 7450588657 cycles.
+[06:50:48.404] [Scheduler] [node=0,inst=0] INFO     Batch #151 is done
+[06:50:48.404] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #152 to NPU[0]
+[06:50:48.405] [TraceGenerator] [node=0,inst=0] INFO     Batch #152: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[10.0s] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 15.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16090.51 MB (95.412 % Used)
+         └─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[06:50:48.538] [Controller] INFO     NPU[0] iteration 153 finished, 10070811872 cycles, exposed communication 7502099034 cycles.
+[06:50:48.538] [Scheduler] [node=0,inst=0] INFO     Batch #152 is done
+[06:50:48.538] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #153 to NPU[0]
+[06:50:48.539] [TraceGenerator] [node=0,inst=0] INFO     Batch #153: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:48.669] [Controller] INFO     NPU[0] iteration 154 finished, 10134288042 cycles, exposed communication 7553609347 cycles.
+[06:50:48.670] [Scheduler] [node=0,inst=0] INFO     Batch #153 is done
+[06:50:48.670] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #154 to NPU[0]
+[06:50:48.671] [TraceGenerator] [node=0,inst=0] INFO     Batch #154: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:48.803] [Controller] INFO     NPU[0] iteration 155 finished, 10197764212 cycles, exposed communication 7605119564 cycles.
+[06:50:48.803] [Scheduler] [node=0,inst=0] INFO     Batch #154 is done
+[06:50:48.804] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #155 to NPU[0]
+[06:50:48.805] [TraceGenerator] [node=0,inst=0] INFO     Batch #155: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:48.942] [Controller] INFO     NPU[0] iteration 156 finished, 10261240382 cycles, exposed communication 7656629717 cycles.
+[06:50:48.943] [Scheduler] [node=0,inst=0] INFO     Batch #155 is done
+[06:50:48.943] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #156 to NPU[0]
+[06:50:48.945] [TraceGenerator] [node=0,inst=0] INFO     Batch #156: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:49.076] [Controller] INFO     NPU[0] iteration 157 finished, 10324716552 cycles, exposed communication 7708139806 cycles.
+[06:50:49.077] [Scheduler] [node=0,inst=0] INFO     Batch #156 is done
+[06:50:49.077] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #157 to NPU[0]
+[06:50:49.078] [TraceGenerator] [node=0,inst=0] INFO     Batch #157: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:49.205] [Controller] INFO     NPU[0] iteration 158 finished, 10388192722 cycles, exposed communication 7759649799 cycles.
+[06:50:49.206] [Scheduler] [node=0,inst=0] INFO     Batch #157 is done
+[06:50:49.207] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #158 to NPU[0]
+[06:50:49.207] [TraceGenerator] [node=0,inst=0] INFO     Batch #158: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:49.340] [Controller] INFO     NPU[0] iteration 159 finished, 10451668892 cycles, exposed communication 7811159728 cycles.
+[06:50:49.340] [Scheduler] [node=0,inst=0] INFO     Batch #158 is done
+[06:50:49.341] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #159 to NPU[0]
+[06:50:49.342] [TraceGenerator] [node=0,inst=0] INFO     Batch #159: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:49.473] [Controller] INFO     NPU[0] iteration 160 finished, 10515145062 cycles, exposed communication 7862669593 cycles.
+[06:50:49.473] [Scheduler] [node=0,inst=0] INFO     Batch #159 is done
+[06:50:49.474] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #160 to NPU[0]
+[06:50:49.474] [TraceGenerator] [node=0,inst=0] INFO     Batch #160: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:49.602] [Controller] INFO     NPU[0] iteration 161 finished, 10578621232 cycles, exposed communication 7914179362 cycles.
+[06:50:49.602] [Scheduler] [node=0,inst=0] INFO     Batch #160 is done
+[06:50:49.603] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16090.51MB load: 2.00MB after: 16092.51MB
+[06:50:49.603] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #161 to NPU[0]
+[06:50:49.604] [TraceGenerator] [node=0,inst=0] INFO     Batch #161: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:49.753] [Controller] INFO     NPU[0] iteration 162 finished, 10642097402 cycles, exposed communication 7965689067 cycles.
+[06:50:49.753] [Scheduler] [node=0,inst=0] INFO     Batch #161 is done
+[06:50:49.754] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #162 to NPU[0]
+[06:50:49.755] [TraceGenerator] [node=0,inst=0] INFO     Batch #162: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:49.882] [Controller] INFO     NPU[0] iteration 163 finished, 10705573572 cycles, exposed communication 8017198708 cycles.
+[06:50:49.883] [Scheduler] [node=0,inst=0] INFO     Batch #162 is done
+[06:50:49.883] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #163 to NPU[0]
+[06:50:49.884] [TraceGenerator] [node=0,inst=0] INFO     Batch #163: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:50.009] [Controller] INFO     NPU[0] iteration 164 finished, 10769049742 cycles, exposed communication 8068708253 cycles.
+[06:50:50.010] [Scheduler] [node=0,inst=0] INFO     Batch #163 is done
+[06:50:50.010] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #164 to NPU[0]
+[06:50:50.011] [TraceGenerator] [node=0,inst=0] INFO     Batch #164: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:50.131] [Controller] INFO     NPU[0] iteration 165 finished, 10832525912 cycles, exposed communication 8120217734 cycles.
+[06:50:50.132] [Scheduler] [node=0,inst=0] INFO     Batch #164 is done
+[06:50:50.132] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #165 to NPU[0]
+[06:50:50.133] [TraceGenerator] [node=0,inst=0] INFO     Batch #165: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:50.254] [Controller] INFO     NPU[0] iteration 166 finished, 10896002082 cycles, exposed communication 8171727151 cycles.
+[06:50:50.254] [Scheduler] [node=0,inst=0] INFO     Batch #165 is done
+[06:50:50.255] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #166 to NPU[0]
+[06:50:50.255] [TraceGenerator] [node=0,inst=0] INFO     Batch #166: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:50.378] [Controller] INFO     NPU[0] iteration 167 finished, 10959478252 cycles, exposed communication 8223236504 cycles.
+[06:50:50.379] [Scheduler] [node=0,inst=0] INFO     Batch #166 is done
+[06:50:50.379] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #167 to NPU[0]
+[06:50:50.380] [TraceGenerator] [node=0,inst=0] INFO     Batch #167: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:50.503] [Controller] INFO     NPU[0] iteration 168 finished, 11022954422 cycles, exposed communication 8274745761 cycles.
+[06:50:50.504] [Scheduler] [node=0,inst=0] INFO     Batch #167 is done
+[06:50:50.504] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #168 to NPU[0]
+[06:50:50.505] [TraceGenerator] [node=0,inst=0] INFO     Batch #168: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[11.0s] Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 16.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16092.51 MB (95.424 % Used)
+         └─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[06:50:50.627] [Controller] INFO     NPU[0] iteration 169 finished, 11086430592 cycles, exposed communication 8326254954 cycles.
+[06:50:50.627] [Scheduler] [node=0,inst=0] INFO     Batch #168 is done
+[06:50:50.627] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #169 to NPU[0]
+[06:50:50.628] [TraceGenerator] [node=0,inst=0] INFO     Batch #169: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:50.753] [Controller] INFO     NPU[0] iteration 170 finished, 11149906762 cycles, exposed communication 8377764083 cycles.
+[06:50:50.754] [Scheduler] [node=0,inst=0] INFO     Batch #169 is done
+[06:50:50.754] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #170 to NPU[0]
+[06:50:50.755] [TraceGenerator] [node=0,inst=0] INFO     Batch #170: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:50.887] [Controller] INFO     NPU[0] iteration 171 finished, 11213382932 cycles, exposed communication 8429273116 cycles.
+[06:50:50.888] [Scheduler] [node=0,inst=0] INFO     Batch #170 is done
+[06:50:50.888] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #171 to NPU[0]
+[06:50:50.889] [TraceGenerator] [node=0,inst=0] INFO     Batch #171: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:51.016] [Controller] INFO     NPU[0] iteration 172 finished, 11276859102 cycles, exposed communication 8480782085 cycles.
+[06:50:51.017] [Scheduler] [node=0,inst=0] INFO     Batch #171 is done
+[06:50:51.017] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #172 to NPU[0]
+[06:50:51.018] [TraceGenerator] [node=0,inst=0] INFO     Batch #172: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:51.144] [Controller] INFO     NPU[0] iteration 173 finished, 11340335272 cycles, exposed communication 8532290990 cycles.
+[06:50:51.144] [Scheduler] [node=0,inst=0] INFO     Batch #172 is done
+[06:50:51.145] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #173 to NPU[0]
+[06:50:51.146] [TraceGenerator] [node=0,inst=0] INFO     Batch #173: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:51.272] [Controller] INFO     NPU[0] iteration 174 finished, 11403811442 cycles, exposed communication 8583799799 cycles.
+[06:50:51.273] [Scheduler] [node=0,inst=0] INFO     Batch #173 is done
+[06:50:51.273] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #174 to NPU[0]
+[06:50:51.274] [TraceGenerator] [node=0,inst=0] INFO     Batch #174: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:51.401] [Controller] INFO     NPU[0] iteration 175 finished, 11467287612 cycles, exposed communication 8635308544 cycles.
+[06:50:51.403] [Scheduler] [node=0,inst=0] INFO     Batch #174 is done
+[06:50:51.403] [Scheduler] [node=0,inst=0] INFO     Scheduling new batch #175 to NPU[0]
+[06:50:51.404] [TraceGenerator] [node=0,inst=0] INFO     Batch #175: model=meta-llama/Llama-3.1-8B num_reqs=1 total_len=1 req_ids=[3]
+[06:50:51.536] [Controller] INFO     NPU[0] iteration 176 finished, 11530763782 cycles, exposed communication 8686817225 cycles.
+[06:50:51.537] [Scheduler] [node=0,inst=0] INFO     Batch #175 is done
+[06:50:51.537] [Scheduler] [node=0,inst=0] INFO     Request #3 is done
+[06:50:51.537] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 16092.51MB remove: 776.00MB after: 15316.51MB
+[06:50:51.537] [MemoryModel] [node=0,inst=0] INFO     NPU: used: 15316.51MB remove: 15316.51MB after: 0.00MB
+────────────────────────────────────────────────────────────────────────────────
+▶ Exiting simulation...
+
+Checking Non-Exited Systems ...
+All Request Has Been Exited
+────────────────────────────────────────────────────────────────────────────────
+▶ Simulation results...
+
+Total simulation time: 0h 0m 25.491s
+────────────────────────────── Throughput Results ──────────────────────────────
+Total requests:                                                     4
+Total clocks (ns):                                                  11530763782
+Total latency (s):                                                  11.531
+Total input tokens:                                                 24576
+Total generated tokens:                                             256
+Request throughput (req/s):                                         0.35
+Average prompt throughput (tok/s):                                  2131.34
+Average generation throughput (tok/s):                              22.20
+Total token throughput (tok/s):                                     2153.54
+Throughput per 1.0 sec ([prompt_throughput], [gen_throughput]): [(12288.0, 19.0), (0.0, 30.0), (0.0, 28.0), (0.0, 16.0), (6144.0, 23.0), (0.0, 24.0), (6144.0, 22.0), (0.0, 32.0), (0.0, 23.0), (0.0, 15.0), (0.0, 16.0)]
+────────────────────────────────────────────────────────────────────────────────
+───────────────────────────────── Instance [0] ─────────────────────────────────
+───────────────────────────── Time to First Token ──────────────────────────────
+Mean TTFT (ms):                                                     2261.56
+Median TTFT (ms):                                                   1880.80
+P99 TTFT (ms):                                                      5027.38
+─────────────────── Time per Output Token (excl. 1st token) ────────────────────
+Mean TPOT (ms):                                                     77.68
+Median TPOT (ms):                                                   78.34
+P99 TPOT (ms):                                                      88.83
+───────────────────────────── Inter-token Latency ──────────────────────────────
+Mean ITL (ms) :                                                     77.68
+Median ITL (ms) :                                                   63.45
+P99 ITL (ms) :                                                      513.13
+─────────────────────────────── End-to-End TTFT ────────────────────────────────
+No End-to-End data available
+───────────────────────────── Queueing Before TTFT ─────────────────────────────
+No Queueing data available
+─────────────────────────────── Prefill Service ────────────────────────────────
+No Prefill data available
+────────────────────────────── Decode After TTFT ───────────────────────────────
+No Decode data available
+────────────────────────────────────────────────────────────────────────────────
+Saving each request's information to output file: outputs/eviction_placement_sweep/w-cpu_kv-npu_evict-cpu.csv
+[06:50:51.626] [Main] INFO     Removed ASTRA-Sim inputs root: /app/LLMServingSim/astra-sim/inputs/runs/w-cpu_kv-npu_evict-cpu

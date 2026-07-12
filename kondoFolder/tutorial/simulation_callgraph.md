@@ -25,7 +25,11 @@ python -m serving \
 
 ## 1. `./scripts/compile.sh` のコールグラフ
 
-`scripts/compile.sh`(全17行)は、ビルドツールというより**2つの外部コマンドを
+> Chakra packageのinstall、protobuf生成、CMake target、生成binary、clean/debug buildの
+> 詳細は[`detail/compile.md`](detail/compile.md)を参照。
+
+`scripts/compile.sh`(全24行、後半のns-3 buildはコメントアウト)は、
+ビルドツールというより**2つの外部コマンドを
 順に実行するだけの薄いラッパー**である。
 
 ```
@@ -49,9 +53,9 @@ scripts/compile.sh
 ```
 
 **要点:**
-- `compile.sh`自体には依存関係の解決やキャッシュ管理は無く、毎回フルビルドを試みる
-  (`pip3 install .`は毎回パッケージを再インストールし、`build.sh`は内部でcmakeの
-  incremental buildを行う)。
+- `compile.sh`自体には独自のキャッシュ管理は無い。`pip3 install .`は毎回packageの
+  build/installを実行する一方、ASTRA-Sim側は既存CMake build directoryを再利用する
+  incremental buildであり、毎回すべてのC++ sourceを再コンパイルするわけではない。
 - `python -m serving`側は、ここで生成された2つの成果物 — (a) `chakra`パッケージと
   (b) `AnalyticalAstra`バイナリ — に依存している。どちらか一方でも古い/壊れていると
   シミュレーションは動かない。
@@ -215,6 +219,13 @@ router.route_arrived_requests(current)
 ---
 
 ### 2.5 `generate_graph()` — Chakraへのサブプロセス委譲
+
+> `generate_graph()`のpath解決、converter引数、NPU別`.et`生成の詳細は
+> [`detail/generate_graph.md`](detail/generate_graph.md)を参照。
+>
+> Chakra graphがASTRA-Sim内部でどのように発行・完了判定され、cycleがPythonへ
+> 戻るかは
+> [`detail/astra_sim_execution.md`](detail/astra_sim_execution.md)を参照。
 
 `graph_generator.py:10`
 

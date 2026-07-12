@@ -2,6 +2,7 @@ import bisect
 import json
 import random
 from .logger import get_logger
+from .memory_model import Device
 
 DEFAULT_KV_MIGRATION_BANDWIDTH_GBPS = 100.0
 DEFAULT_KV_MIGRATION_DISTANCE_M = 10_000.0
@@ -24,6 +25,9 @@ _GEO_FIELDS = (
     'downlink_distance_latency_ns', 'downlink_serialization_latency_ns', 'downlink_latency_ns',
     'communication_latency_ns',
     'request_send_time_ns',
+    'redirect_capacity_reason',
+    'capacity_running_reqs', 'capacity_max_num_seqs',
+    'capacity_required_kv_bytes', 'capacity_free_npu_bytes',
 )
 
 
@@ -48,10 +52,25 @@ class Router:
             # Only consumed by NEAREST_MIGRATE's GPU-to-GPU backbone forward.
             gpu_backbone_bandwidth_gbps=None,
             gpu_backbone_distance_m=None,
+            # SPEC: fixed-RTT APN model (10cell_apn spec section 6). When set,
+            # replaces every distance-proportional propagation term in
+            # _maybe_reject_and_redirect / _maybe_migrate_and_redirect /
+            # _apply_kv_migration_if_needed with this constant, since a real
+            # APN link's one-way propagation is uniform across node pairs
+            # rather than physical-distance-proportional.
+            apn_fixed_propagation_ns=None,
+            # SPEC: CPU-staging KV migration time model (10cell_apn spec
+            # section 8.3). Both must be set together to activate; otherwise
+            # KV migration keeps the single-hop distance+serialization model.
+            kv_staging_bandwidth_gbytes_per_s=None,
+            kv_staging_latency_ns=None,
     ):
         # SPEC: stored for NEAREST_MIGRATE (see _maybe_migrate_and_redirect below).
         self.gpu_backbone_bandwidth_gbps = gpu_backbone_bandwidth_gbps
         self.gpu_backbone_distance_m = gpu_backbone_distance_m
+        self.apn_fixed_propagation_ns = apn_fixed_propagation_ns
+        self.kv_staging_bandwidth_gbytes_per_s = kv_staging_bandwidth_gbytes_per_s
+        self.kv_staging_latency_ns = kv_staging_latency_ns
         self.schedulers = schedulers
         self.num_instances = num_instances
         self.prefill_schedulers = [s for s in schedulers if s.pd_type != "decode"]
@@ -280,17 +299,64 @@ class Router:
         return None
 
     @staticmethod
-    def _has_capacity(sched):
-        """True if the instance has a free running slot right now.
+    def _has_capacity(sched, req_data):
+        """Return whether ``sched`` can admit the request without eviction.
 
-        Mirrors the admission check `Scheduler` itself uses each iteration
-        (`available_slots = max_num_seqs - running_reqs`); a request that
-        can't fit here would otherwise just wait in `sched.request` (vLLM-style
-        unbounded FIFO wait queue). NEAREST_REJECT treats "no free slot" as a
-        capacity rejection instead of a queueing wait.
+        Admission requires both a free sequence slot and enough currently free
+        NPU memory for the reusable local prefix plus the request's next
+        prefill chunk.  Prefixes are seeded lazily after routing, so their
+        block-rounded footprint must be included here even though the workload
+        declares them to exist at the home GPU.  Evictable cache space is not
+        counted: needing an eviction means the request is eligible for
+        redirect instead of silently creating memory pressure at the home GPU.
         """
         running_reqs = sum(len(b.requests) for b in sched.inflight)
-        return running_reqs < sched.max_num_seqs
+        slot_available = running_reqs < sched.max_num_seqs
+
+        input_toks = max(0, int(req_data.get('input_toks', 0)))
+        reuse_toks = min(input_toks, max(0, int(req_data.get('reuse_prefix_toks', 0))))
+        block_size = max(1, int(sched.memory.block_size))
+        reuse_toks = reuse_toks // block_size * block_size
+
+        remaining_toks = max(0, input_toks - reuse_toks)
+        if sched.enable_chunked_prefill:
+            next_step_toks = min(remaining_toks, int(sched.max_num_batched_tokens))
+            threshold = int(sched.long_prefill_token_threshold)
+            if threshold > 0:
+                next_step_toks = min(next_step_toks, threshold)
+        else:
+            next_step_toks = remaining_toks
+
+        tokens_after_step = reuse_toks + next_step_toks
+        blocks_after_step = (tokens_after_step + block_size - 1) // block_size
+        required_kv_bytes = sched.memory.get_kv(blocks_after_step * block_size)
+        if sched.memory.enable_prefix_caching:
+            free_npu_bytes = sched.memory.avail_size(Device.NPU)
+        else:
+            free_npu_bytes = sched.memory.npu_mem - sched.memory.npu_used
+        memory_available = required_kv_bytes <= free_npu_bytes
+
+        if slot_available and memory_available:
+            return True
+
+        if not slot_available and not memory_available:
+            reason = 'sequence_and_memory'
+        elif not slot_available:
+            reason = 'sequence_full'
+        else:
+            reason = 'npu_memory'
+        geo = req_data.get('geo')
+        if geo is None:
+            geo = {}
+            req_data['geo'] = geo
+        geo.update({
+            'redirect_capacity_reason': reason,
+            'capacity_running_reqs': running_reqs,
+            'capacity_max_num_seqs': int(sched.max_num_seqs),
+            'capacity_required_kv_bytes': required_kv_bytes,
+            'capacity_free_npu_bytes': free_npu_bytes,
+        })
+        return False
 
     def _maybe_reject_and_redirect(self, req_data, current_time_ns):
         """NEAREST_REJECT: check the nearest GPU's capacity; if full, charge a
@@ -327,7 +393,7 @@ class Router:
                 f"does not match any available prefill instance."
             )
 
-        if self._has_capacity(sched):
+        if self._has_capacity(sched, req_data):
             return False
 
         nearest_distance_m = float(geo['distance_m'])
@@ -338,9 +404,14 @@ class Router:
         request_payload_bytes = float(geo['request_payload_bytes'])
         first_token_payload_bytes = float(geo['first_token_payload_bytes'])
 
-        reject_penalty_ns = round(2 * nearest_distance_m * per_meter_ns)
-
-        uplink_distance_ns = round(second_distance_m * per_meter_ns)
+        # SPEC: fixed APN RTT (10cell_apn spec section 6) overrides the
+        # distance-proportional round trip / resend propagation when set.
+        if self.apn_fixed_propagation_ns is not None:
+            reject_penalty_ns = round(2 * self.apn_fixed_propagation_ns)
+            uplink_distance_ns = round(self.apn_fixed_propagation_ns)
+        else:
+            reject_penalty_ns = round(2 * nearest_distance_m * per_meter_ns)
+            uplink_distance_ns = round(second_distance_m * per_meter_ns)
         uplink_serialization_ns = round(8000.0 * request_payload_bytes / mbps)
         uplink_latency_ns = uplink_distance_ns + uplink_serialization_ns
 
@@ -395,11 +466,19 @@ class Router:
                 "with second-nearest-GPU fields (generate it with "
                 "`python -m workloads.generators geographic`)."
             )
-        if self.gpu_backbone_bandwidth_gbps is None or self.gpu_backbone_distance_m is None:
+        if self.gpu_backbone_bandwidth_gbps is None:
             raise RuntimeError(
                 "NEAREST_MIGRATE routing policy requires --gpu-backbone-bandwidth-gbps "
-                "and --gpu-backbone-distance-m (GPU-to-GPU backbone link, distinct from "
-                "the UE<->GPU access link)."
+                "(GPU-to-GPU backbone link, distinct from the UE<->GPU access link)."
+            )
+        # SPEC: distance is only needed for the legacy distance-proportional
+        # model; a fixed APN propagation constant (10cell_apn spec section 6)
+        # is an accepted substitute.
+        if self.gpu_backbone_distance_m is None and self.apn_fixed_propagation_ns is None:
+            raise RuntimeError(
+                "NEAREST_MIGRATE routing policy requires either --gpu-backbone-distance-m "
+                "(distance-proportional model) or --apn-fixed-propagation-ns (fixed APN "
+                "propagation model)."
             )
 
         geo.setdefault('nearest_gpu_id', geo.get('gpu_id'))
@@ -412,7 +491,7 @@ class Router:
                 f"does not match any available prefill instance."
             )
 
-        if self._has_capacity(sched):
+        if self._has_capacity(sched, req_data):
             return False
 
         second_gpu_id = int(geo['second_nearest_gpu_id'])
@@ -424,12 +503,21 @@ class Router:
 
         # --- GPU_A -> GPU_B backbone forward (operator network, not the UE link) ---
         backbone_mbps = float(self.gpu_backbone_bandwidth_gbps) * 1000.0
-        migration_distance_ns = round(float(self.gpu_backbone_distance_m) * per_meter_ns)
+        # SPEC: fixed APN propagation (10cell_apn spec section 6) overrides
+        # the distance-proportional backbone/downlink propagation when set --
+        # both legs are APN hops under the spec's single-network framing.
+        if self.apn_fixed_propagation_ns is not None:
+            migration_distance_ns = round(self.apn_fixed_propagation_ns)
+        else:
+            migration_distance_ns = round(float(self.gpu_backbone_distance_m) * per_meter_ns)
         migration_serialization_ns = round(8000.0 * request_payload_bytes / backbone_mbps)
         migration_latency_ns = migration_distance_ns + migration_serialization_ns
 
         # --- GPU_B -> UE downlink (normal access link, but from GPU_B's distance) ---
-        downlink_distance_ns = round(second_distance_m * per_meter_ns)
+        if self.apn_fixed_propagation_ns is not None:
+            downlink_distance_ns = round(self.apn_fixed_propagation_ns)
+        else:
+            downlink_distance_ns = round(second_distance_m * per_meter_ns)
         downlink_serialization_ns = round(8000.0 * first_token_payload_bytes / access_mbps)
         downlink_latency_ns = downlink_distance_ns + downlink_serialization_ns
 
@@ -680,11 +768,27 @@ class Router:
         migration_bytes = sched.memory.get_kv(migrated_tokens) * sched.num_npus
         bandwidth_mbps = float(failover['kv_migration_bandwidth_gbps']) * 1000.0
         serialization_ns = round(8000.0 * migration_bytes / bandwidth_mbps) if bandwidth_mbps > 0 else 0
-        distance_ns = round(
-            float(failover['kv_migration_distance_m']) *
-            float(failover['distance_latency_ns_per_meter'])
-        )
-        migration_ns = distance_ns + serialization_ns
+        # SPEC: fixed APN propagation (10cell_apn spec section 6) overrides
+        # the distance-proportional APN leg when set.
+        if self.apn_fixed_propagation_ns is not None:
+            distance_ns = round(self.apn_fixed_propagation_ns)
+        else:
+            distance_ns = round(
+                float(failover['kv_migration_distance_m']) *
+                float(failover['distance_latency_ns_per_meter'])
+            )
+        apn_leg_ns = distance_ns + serialization_ns
+        # SPEC: CPU-staging KV migration time model (10cell_apn spec section
+        # 8.3) -- source GPU->CPU, APN transfer, CPU->target GPU, all
+        # sequential. GB/s numerically equals bytes/ns, so no unit
+        # conversion is needed. Only activates when both staging params are
+        # set; otherwise migration stays a single-hop distance+serialization
+        # cost (existing behavior).
+        if self.kv_staging_bandwidth_gbytes_per_s is not None and self.kv_staging_latency_ns is not None:
+            staging_ns = self.kv_staging_latency_ns + migration_bytes / self.kv_staging_bandwidth_gbytes_per_s
+            migration_ns = staging_ns + apn_leg_ns + staging_ns
+        else:
+            migration_ns = apn_leg_ns
 
         original_arrival = int(req_data['arrival_time_ns'])
         req_data['arrival_time_ns'] = original_arrival + migration_ns

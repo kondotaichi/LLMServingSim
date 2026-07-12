@@ -59,6 +59,22 @@ them in pandas (`df["instance id"]`).
 > aggregate prefix-hit rates; for per-request agentic accounting,
 > read the `Request` objects directly or extend `Scheduler.save_output`.
 
+For capacity-based geographic redirects, the CSV also records the admission
+decision that caused a request to leave its nearest GPU:
+
+| Column | Meaning |
+| --- | --- |
+| `redirect_capacity_reason` | `sequence_full`, `npu_memory`, or `sequence_and_memory`; blank when no capacity redirect occurred |
+| `capacity_running_reqs` | Running requests at the nearest GPU when admission was rejected |
+| `capacity_max_num_seqs` | Sequence limit used by that admission check |
+| `capacity_required_kv_bytes` | Block-rounded reusable prefix plus next-prefill-chunk KV bytes required by the new request |
+| `capacity_free_npu_bytes` | Physical NPU bytes free at the admission check; evictable cache space is excluded |
+
+These fields make memory-triggered redirects directly auditable: a row with
+`redirect_capacity_reason=npu_memory` and
+`capacity_running_reqs < capacity_max_num_seqs` was redirected for memory
+pressure before reaching the sequence limit.
+
 ### Common derived metrics
 
 ```python

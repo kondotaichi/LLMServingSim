@@ -255,6 +255,21 @@ def main():
     parser.add_argument('--gpu-backbone-distance-m', type=float, default=None,
                         help='GPU-to-GPU backbone physical distance in meters, used by NEAREST_MIGRATE and '
                         'NEAREST_MIGRATE_KV (distinct from the UE<->GPU distances in the geographic workload)')
+    parser.add_argument('--apn-fixed-propagation-ns', type=float, default=None,
+                        help='Fixed, distance-independent one-way APN propagation delay in ns. When set, '
+                        'overrides the distance-proportional propagation term everywhere it would otherwise '
+                        'be used by NEAREST_REJECT / NEAREST_MIGRATE / NEAREST_MIGRATE_KV (capacity-check '
+                        'round trip, backbone forward, and KV migration APN leg), modeling a fixed-RTT access '
+                        'network (e.g. APN) instead of physical-distance-proportional latency. '
+                        '--gpu-backbone-distance-m becomes optional when this is set.')
+    parser.add_argument('--kv-staging-bandwidth-gbytes-per-s', type=float, default=None,
+                        help='CPU staging bandwidth in GB/s for cross-instance KV migration (NEAREST_MIGRATE_KV). '
+                        'When set together with --kv-staging-latency-ns, KV migration time becomes '
+                        'source-GPU->CPU staging + APN transfer + CPU->target-GPU staging (all sequential) '
+                        'instead of a single-hop distance+serialization cost.')
+    parser.add_argument('--kv-staging-latency-ns', type=float, default=None,
+                        help='CPU staging fixed latency in ns for cross-instance KV migration (NEAREST_MIGRATE_KV). '
+                        'Charged once per staging hop (source and target); see --kv-staging-bandwidth-gbytes-per-s.')
     # <<< SPEC: redirect-on-capacity routing (CLI flags) -----------------------
     parser.add_argument('--expert-routing-policy', type=str,
                         choices=['BALANCED', 'RR', 'RAND', 'CUSTOM'],
@@ -527,7 +542,10 @@ def main():
     # the two gpu_backbone_* kwargs feed NEAREST_MIGRATE and NEAREST_MIGRATE_KV (see router.py).
     router = Router(num_instances, schedulers, num_req, request_routing_policy,
                     gpu_backbone_bandwidth_gbps=args.gpu_backbone_bandwidth_gbps,
-                    gpu_backbone_distance_m=args.gpu_backbone_distance_m)
+                    gpu_backbone_distance_m=args.gpu_backbone_distance_m,
+                    apn_fixed_propagation_ns=args.apn_fixed_propagation_ns,
+                    kv_staging_bandwidth_gbytes_per_s=args.kv_staging_bandwidth_gbytes_per_s,
+                    kv_staging_latency_ns=args.kv_staging_latency_ns)
     # Power Modeling if enabled
     if power_modeling:
         power_model = PowerModel(power_configs)

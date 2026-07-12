@@ -74,11 +74,18 @@ GPU without seeding the prefix cache.
 ### Dynamic nearest-GPU handoff with KV sharing
 
 For geographic workloads, `NEAREST_MIGRATE_KV` extends
-`NEAREST_MIGRATE`: when the nearest GPU has no free running slot, the
+`NEAREST_MIGRATE`: when the nearest GPU cannot immediately admit the request, the
 request is forwarded to the second-nearest GPU and, if the row has
 `reuse_prefix_toks > 0`, the reusable prefix KV cache is transferred
 and seeded on that target GPU before scheduling. This requires prefix
 caching to be enabled.
+
+Immediate admission requires both a free `max_num_seqs` slot and enough
+currently free NPU memory for the block-rounded reusable prefix plus the next
+prefill chunk. The chunk respects `max_num_batched_tokens` and
+`long_prefill_token_threshold`. Evictable cache space is deliberately excluded:
+if admitting the request would first require eviction, the request is eligible
+for redirect even when `max_num_seqs` has not been reached.
 
 `NEAREST_KV` is the non-redirect counterpart: it always uses the
 nearest GPU, but seeds `reuse_prefix_toks` into that nearest GPU's

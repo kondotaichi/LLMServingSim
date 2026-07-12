@@ -988,6 +988,9 @@ class Scheduler:
                                 # 'decode_ratio' above. 0/blank for every policy except
                                 # NEAREST_REJECT/NEAREST_MIGRATE/NEAREST_MIGRATE_KV.
                                 'nearest_gpu_id', 'rerouted', 'reject_penalty_ns', 'migration_latency_ns',
+                                'redirect_capacity_reason',
+                                'capacity_running_reqs', 'capacity_max_num_seqs',
+                                'capacity_required_kv_bytes', 'capacity_free_npu_bytes',
                                 # <<< SPEC: redirect-on-capacity routing
                                 # --- KV-cache failover / migration (separate, pre-existing feature) ---
                                 'failover_mode', 'failed_instance_id', 'failover_target_instance_id',
@@ -1054,6 +1057,11 @@ class Scheduler:
                     req.rerouted,
                     req.reject_penalty_ns,
                     req.migration_latency_ns,
+                    req.redirect_capacity_reason,
+                    req.capacity_running_reqs,
+                    req.capacity_max_num_seqs,
+                    req.capacity_required_kv_bytes,
+                    req.capacity_free_npu_bytes,
                     # <<< SPEC: redirect-on-capacity routing
                     req.failover_mode,
                     req.failed_instance_id,

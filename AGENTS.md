@@ -119,6 +119,35 @@ scheduler.py → next iteration
 - **Imports**: keep minimal and consistent; `serving/` modules use relative imports
 - **Comments**: use English only — no Korean or other non-English text in comments, docstrings, or log messages
 
+### Copy-paste-safe shell commands
+
+When presenting shell commands to the user, make every command directly copy-pasteable into a terminal.
+
+- Do not include shell prompts such as `$`, `#`, `%`, `❯`, or `user@host:~$`
+- Put explanations outside the command itself; do not mix prose and executable text on the same line
+- Prefer one complete command per line when readability is not harmed
+- For multiline commands, use a trailing backslash `\` only when necessary
+- A continuation backslash must be the final byte on the line; never place spaces or tabs after it
+- Use ASCII spaces, quotes (`'`, `"`), and hyphens (`-`) only
+- Never emit non-breaking spaces, full-width spaces, zero-width characters, smart quotes, or typographic dashes inside commands
+- Do not use tabs for visual alignment in shell commands
+- Do not copy terminal output, line numbers, or Markdown list markers into executable command blocks
+- Keep placeholders explicit and shell-safe, for example `<MODEL_NAME>`; clearly state that they must be replaced before execution
+- When several commands must run in sequence, present them as separate lines in execution order
+- If environment variables must persist for later commands, use `export` explicitly
+- Before presenting a multiline command, verify that quoting, escaping, and line continuation remain valid after plain-text copy and paste
+
+Example of an acceptable multiline command:
+
+```bash
+python -m workloads.generators sharegpt \
+  --model meta-llama/Llama-3.1-8B \
+  --num-reqs 100 \
+  --output workloads/sharegpt.jsonl
+```
+
+Do not place comments after a continuation backslash, and do not format commands using smart punctuation.
+
 ## Architecture Patterns
 
 ### Profiler (`profiler/`)

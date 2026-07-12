@@ -33,6 +33,20 @@ def main() -> int:
     from workloads.generators.geographic import register_args as gg_register
     gg_register(gg)
 
+    rr = sub.add_parser(
+        "regional-ratio",
+        help="Flat JSONL -> regional workload using 10-minute load ratios",
+    )
+    from workloads.generators.regional_ratio import register_args as rr_register
+    rr_register(rr)
+
+    ca = sub.add_parser(
+        "cell-apn",
+        help="regional-ratio output -> fixed 3-4-3 GPU grid + Voronoi-stratified users + KV reuse (10cell_apn spec)",
+    )
+    from workloads.generators.cell_apn import register_args as ca_register
+    ca_register(ca)
+
     args = parser.parse_args()
 
     if args.generator == "sharegpt":
@@ -45,6 +59,14 @@ def main() -> int:
 
     if args.generator == "geographic":
         from workloads.generators.geographic import run
+        return run(args)
+
+    if args.generator == "regional-ratio":
+        from workloads.generators.regional_ratio import run
+        return run(args)
+
+    if args.generator == "cell-apn":
+        from workloads.generators.cell_apn import run
         return run(args)
 
     parser.error(f"Unknown generator: {args.generator}")

@@ -84,6 +84,11 @@ class Request:
         self.rerouted = geo.get('rerouted', 0)
         self.reject_penalty_ns = geo.get('reject_penalty_ns', 0)
         self.migration_latency_ns = geo.get('migration_latency_ns', 0)
+        self.redirect_capacity_reason = geo.get('redirect_capacity_reason', '')
+        self.capacity_running_reqs = geo.get('capacity_running_reqs', '')
+        self.capacity_max_num_seqs = geo.get('capacity_max_num_seqs', '')
+        self.capacity_required_kv_bytes = geo.get('capacity_required_kv_bytes', '')
+        self.capacity_free_npu_bytes = geo.get('capacity_free_npu_bytes', '')
         # <<< SPEC: redirect-on-capacity routing -----------------------------
 
         # --- KV-cache failover / migration simulation (pre-existing, unrelated to the spec above) ---
