@@ -299,45 +299,69 @@ class Router:
         return None
 
     @staticmethod
-    def _has_capacity(sched, req_data):
-        """Return whether ``sched`` can admit the request without eviction.
+    def _active_requests(sched):
+        """Return unique waiting and inflight requests already admitted."""
+        active = {}
+        for req in sched.request:
+            active[req.id] = req
+        for batch in sched.inflight:
+            for req in batch.requests:
+                active[req.id] = req
+        return active.values()
 
-        Admission requires both a free sequence slot and enough currently free
-        NPU memory for the reusable local prefix plus the request's next
-        prefill chunk.  Prefixes are seeded lazily after routing, so their
-        block-rounded footprint must be included here even though the workload
-        declares them to exist at the home GPU.  Evictable cache space is not
-        counted: needing an eviction means the request is eligible for
-        redirect instead of silently creating memory pressure at the home GPU.
+    @staticmethod
+    def _full_request_kv_bytes(sched, total_tokens):
+        block_size = max(1, int(sched.memory.block_size))
+        blocks = (max(0, int(total_tokens)) + block_size - 1) // block_size
+        return sched.memory.get_kv(blocks * block_size)
+
+    @staticmethod
+    def _clear_capacity_failure(req_data):
+        geo = req_data.get('geo')
+        if geo is None:
+            return
+        for key in (
+            'redirect_capacity_reason', 'capacity_running_reqs',
+            'capacity_max_num_seqs', 'capacity_required_kv_bytes',
+            'capacity_free_npu_bytes', 'capacity_projected_active_kv_bytes',
+            'capacity_kv_budget_bytes', 'capacity_available_kv_bytes',
+        ):
+            geo.pop(key, None)
+
+    @classmethod
+    def _has_capacity(cls, sched, req_data, record_failure=True):
+        """Return whether ``sched`` can safely reserve the complete request.
+
+        Besides the running-sequence limit, admission reserves block-rounded
+        KV for the maximum context of every waiting/inflight request and the
+        candidate request. Finished, evictable prefix-cache entries are not
+        reserved and may be evicted by the scheduler. This prevents a request
+        accepted during prefill from exhausting NPU memory later during decode.
         """
         running_reqs = sum(len(b.requests) for b in sched.inflight)
         slot_available = running_reqs < sched.max_num_seqs
 
-        input_toks = max(0, int(req_data.get('input_toks', 0)))
-        reuse_toks = min(input_toks, max(0, int(req_data.get('reuse_prefix_toks', 0))))
-        block_size = max(1, int(sched.memory.block_size))
-        reuse_toks = reuse_toks // block_size * block_size
-
-        remaining_toks = max(0, input_toks - reuse_toks)
-        if sched.enable_chunked_prefill:
-            next_step_toks = min(remaining_toks, int(sched.max_num_batched_tokens))
-            threshold = int(sched.long_prefill_token_threshold)
-            if threshold > 0:
-                next_step_toks = min(next_step_toks, threshold)
-        else:
-            next_step_toks = remaining_toks
-
-        tokens_after_step = reuse_toks + next_step_toks
-        blocks_after_step = (tokens_after_step + block_size - 1) // block_size
-        required_kv_bytes = sched.memory.get_kv(blocks_after_step * block_size)
+        projected_active_kv_bytes = sum(
+            cls._full_request_kv_bytes(sched, req.output)
+            for req in cls._active_requests(sched)
+        )
+        required_kv_bytes = cls._full_request_kv_bytes(
+            sched, req_data.get('output_toks', 0)
+        )
         if sched.memory.enable_prefix_caching:
+            kv_budget_bytes = sched.memory.mem_for_kv
             free_npu_bytes = sched.memory.avail_size(Device.NPU)
         else:
+            kv_budget_bytes = sched.memory.npu_mem - sched.memory.weight
             free_npu_bytes = sched.memory.npu_mem - sched.memory.npu_used
-        memory_available = required_kv_bytes <= free_npu_bytes
+        available_kv_bytes = max(0, kv_budget_bytes - projected_active_kv_bytes)
+        memory_available = required_kv_bytes <= available_kv_bytes
 
         if slot_available and memory_available:
             return True
+
+        if not record_failure:
+            return False
 
         if not slot_available and not memory_available:
             reason = 'sequence_and_memory'
@@ -355,8 +379,30 @@ class Router:
             'capacity_max_num_seqs': int(sched.max_num_seqs),
             'capacity_required_kv_bytes': required_kv_bytes,
             'capacity_free_npu_bytes': free_npu_bytes,
+            'capacity_projected_active_kv_bytes': projected_active_kv_bytes,
+            'capacity_kv_budget_bytes': kv_budget_bytes,
+            'capacity_available_kv_bytes': available_kv_bytes,
         })
         return False
+
+    @staticmethod
+    def _defer_capacity_retry(req_data, current_time_ns, source_sched, target_sched):
+        """Wait for capacity when neither nearest candidate can admit safely."""
+        required = int((req_data.get('geo') or {}).get('capacity_required_kv_bytes', 0))
+        largest_budget = max(
+            int(source_sched.memory.mem_for_kv),
+            int(target_sched.memory.mem_for_kv),
+        )
+        if required > largest_budget:
+            raise RuntimeError(
+                "Request cannot fit on any redirect candidate even when idle: "
+                f"required KV {required} bytes, largest KV budget {largest_budget} bytes"
+            )
+        req_data['arrival_time_ns'] = max(
+            int(req_data['arrival_time_ns']), int(current_time_ns) + 1
+        )
+        req_data['_capacity_retry_count'] = int(req_data.get('_capacity_retry_count', 0)) + 1
+        return True
 
     def _maybe_reject_and_redirect(self, req_data, current_time_ns):
         """NEAREST_REJECT: check the nearest GPU's capacity; if full, charge a
@@ -394,10 +440,21 @@ class Router:
             )
 
         if self._has_capacity(sched, req_data):
+            self._clear_capacity_failure(req_data)
             return False
 
         nearest_distance_m = float(geo['distance_m'])
         second_gpu_id = int(geo['second_nearest_gpu_id'])
+        target_sched = self._find_scheduler(self.prefill_schedulers, second_gpu_id)
+        if target_sched is None:
+            raise RuntimeError(
+                f"NEAREST_REJECT routing: second_nearest_gpu_id {second_gpu_id} "
+                "does not match any available prefill instance."
+            )
+        if not self._has_capacity(target_sched, req_data, record_failure=False):
+            return self._defer_capacity_retry(
+                req_data, current_time_ns, sched, target_sched
+            )
         second_distance_m = float(geo['second_nearest_distance_m'])
         per_meter_ns = float(geo['distance_latency_ns_per_meter'])
         mbps = float(geo['network_throughput_mbps'])
@@ -492,9 +549,20 @@ class Router:
             )
 
         if self._has_capacity(sched, req_data):
+            self._clear_capacity_failure(req_data)
             return False
 
         second_gpu_id = int(geo['second_nearest_gpu_id'])
+        target_sched = self._find_scheduler(self.prefill_schedulers, second_gpu_id)
+        if target_sched is None:
+            raise RuntimeError(
+                f"NEAREST_MIGRATE routing: second_nearest_gpu_id {second_gpu_id} "
+                "does not match any available prefill instance."
+            )
+        if not self._has_capacity(target_sched, req_data, record_failure=False):
+            return self._defer_capacity_retry(
+                req_data, current_time_ns, sched, target_sched
+            )
         second_distance_m = float(geo['second_nearest_distance_m'])
         per_meter_ns = float(geo['distance_latency_ns_per_meter'])
         access_mbps = float(geo['network_throughput_mbps'])
@@ -858,6 +926,25 @@ class Router:
             # `instance_id = self._select_instance(...)` below — everything
             # in this block up to (not including) the `failover = ...` line
             # is new.
+            if self.routing_policy == "NEAREST_KV":
+                nearest_sched = self._find_scheduler(
+                    self.prefill_schedulers, req_data['assigned_instance_id']
+                )
+                if nearest_sched is None:
+                    raise RuntimeError(
+                        f"NEAREST_KV routing: assigned_instance_id "
+                        f"{req_data['assigned_instance_id']} does not match any "
+                        "available prefill instance."
+                    )
+                if not self._has_capacity(nearest_sched, req_data):
+                    self._defer_capacity_retry(
+                        req_data, current_time_ns, nearest_sched, nearest_sched
+                    )
+                    self._pending_requests.pop(self._pending_idx)
+                    self._insert_pending_sorted(req_data)
+                    continue
+                self._clear_capacity_failure(req_data)
+
             if self.routing_policy == "NEAREST_REJECT" and not req_data.get('_reject_resolved', False):
                 if self._maybe_reject_and_redirect(req_data, current_time_ns):
                     # Arrival time pushed back to account for the capacity-check
@@ -872,6 +959,28 @@ class Router:
                     # Arrival time pushed back by the GPU-to-GPU backbone
                     # transfer only (the UE->GPU_A uplink already elapsed);
                     # reinsert in sorted order and retry later.
+                    self._pending_requests.pop(self._pending_idx)
+                    self._insert_pending_sorted(req_data)
+                    continue
+
+            # Capacity may change while a redirected request is in transit.
+            # Revalidate the chosen target immediately before final admission.
+            if (
+                self.routing_policy in ("NEAREST_REJECT", "NEAREST_MIGRATE", "NEAREST_MIGRATE_KV")
+                and req_data.get('_reject_resolved', False)
+            ):
+                target_sched = self._find_scheduler(
+                    self.prefill_schedulers, req_data['assigned_instance_id']
+                )
+                if target_sched is None:
+                    raise RuntimeError(
+                        f"Redirect target {req_data['assigned_instance_id']} does not "
+                        "match any available prefill instance."
+                    )
+                if not self._has_capacity(target_sched, req_data, record_failure=False):
+                    req_data['arrival_time_ns'] = max(
+                        int(req_data['arrival_time_ns']), int(current_time_ns) + 1
+                    )
                     self._pending_requests.pop(self._pending_idx)
                     self._insert_pending_sorted(req_data)
                     continue

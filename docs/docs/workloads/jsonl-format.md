@@ -80,12 +80,15 @@ request is forwarded to the second-nearest GPU and, if the row has
 and seeded on that target GPU before scheduling. This requires prefix
 caching to be enabled.
 
-Immediate admission requires both a free `max_num_seqs` slot and enough
-currently free NPU memory for the block-rounded reusable prefix plus the next
-prefill chunk. The chunk respects `max_num_batched_tokens` and
-`long_prefill_token_threshold`. Evictable cache space is deliberately excluded:
-if admitting the request would first require eviction, the request is eligible
-for redirect even when `max_num_seqs` has not been reached.
+Immediate admission requires both a free `max_num_seqs` slot and enough logical
+KV capacity to reserve the complete block-rounded maximum context of the new
+request. The same complete-context reservation is maintained for every waiting
+and inflight request already admitted to that GPU. Finished prefix-cache entries
+are not reserved and may be evicted by the scheduler. The second-nearest target
+is checked with the same rule; when neither candidate can admit the request, it
+waits and reevaluates both candidates after capacity changes. This can trigger redirect even when
+`max_num_seqs` has not been reached and prevents later decode growth from
+exhausting NPU memory.
 
 `NEAREST_KV` is the non-redirect counterpart: it always uses the
 nearest GPU, but seeds `reuse_prefix_toks` into that nearest GPU's

@@ -47,9 +47,16 @@
     未指定なら従来どおり単一ホップのまま（後方互換）。
 - `_has_capacity`をsequence slotだけの判定から、次のAND条件へ拡張。
   - `running_reqs < max_num_seqs`
-  - block丸めした再利用prefixと次回prefill chunkのKV容量が、現在のNPU物理空き容量以内
-  - 次回chunkは`max_num_batched_tokens`と`long_prefill_token_threshold`を考慮
-  - evict可能領域は空きに含めず、evictionが必要ならredirect対象
+  - waiting/inflightの受理済み全リクエストの最大context KVを予約した残余に、
+    新規リクエストの最大context KVが収まる
+  - 第2近傍GPUにも同じ判定を適用し、転送中に容量が変化するため到着時にも再判定
+  - 両候補が満杯なら第3近傍へは連鎖せず、容量解放まで待機して再試行
+  - 完了済みでevict可能なprefix cacheは予約せず、schedulerによるevictを許容
+  - decode成長分まで受理時に予約し、受理後のNPU KV OOMを防止
+- `MemoryModel.apply_kv_cache_events()`のNPU block割当直前にも物理空き容量を
+  再確認する最終保護を追加。割当不足分について完了済み・lock解除済みprefixを
+  evictしてからallocateし、それでも不足する場合はactive KV予約またはcache
+  accountingの不整合を示す診断付きエラーにする。
 
 新規kwargがすべて`None`の場合、既存の距離比例モデルの計算式は一切変更して
 いない。

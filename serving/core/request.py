@@ -89,6 +89,9 @@ class Request:
         self.capacity_max_num_seqs = geo.get('capacity_max_num_seqs', '')
         self.capacity_required_kv_bytes = geo.get('capacity_required_kv_bytes', '')
         self.capacity_free_npu_bytes = geo.get('capacity_free_npu_bytes', '')
+        self.capacity_projected_active_kv_bytes = geo.get('capacity_projected_active_kv_bytes', '')
+        self.capacity_kv_budget_bytes = geo.get('capacity_kv_budget_bytes', '')
+        self.capacity_available_kv_bytes = geo.get('capacity_available_kv_bytes', '')
         # <<< SPEC: redirect-on-capacity routing -----------------------------
 
         # --- KV-cache failover / migration simulation (pre-existing, unrelated to the spec above) ---

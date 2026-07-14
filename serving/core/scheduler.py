@@ -991,6 +991,8 @@ class Scheduler:
                                 'redirect_capacity_reason',
                                 'capacity_running_reqs', 'capacity_max_num_seqs',
                                 'capacity_required_kv_bytes', 'capacity_free_npu_bytes',
+                                'capacity_projected_active_kv_bytes',
+                                'capacity_kv_budget_bytes', 'capacity_available_kv_bytes',
                                 # <<< SPEC: redirect-on-capacity routing
                                 # --- KV-cache failover / migration (separate, pre-existing feature) ---
                                 'failover_mode', 'failed_instance_id', 'failover_target_instance_id',
@@ -1062,6 +1064,9 @@ class Scheduler:
                     req.capacity_max_num_seqs,
                     req.capacity_required_kv_bytes,
                     req.capacity_free_npu_bytes,
+                    req.capacity_projected_active_kv_bytes,
+                    req.capacity_kv_budget_bytes,
+                    req.capacity_available_kv_bytes,
                     # <<< SPEC: redirect-on-capacity routing
                     req.failover_mode,
                     req.failed_instance_id,

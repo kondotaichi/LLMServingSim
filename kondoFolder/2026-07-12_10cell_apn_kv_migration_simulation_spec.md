@@ -206,13 +206,14 @@ PCIe帯域を別に与えていないため、上式はCPUメモリ帯域を含�
 最寄りGPUは、次の両条件を満たす場合だけ新規リクエストを受け入れる。
 
 1. `running_reqs < max_num_seqs`
-2. 再利用prefixと次回prefill chunkをblock単位で配置するためのKV容量が、現在の
-   NPU物理空き容量以内
+2. waiting/inflightの受理済み全リクエストについて、最大context到達時の
+   block丸めKV容量を予約した残余に、新規リクエストの最大context KVが収まる
 
-次回chunkは`max_num_batched_tokens`と、0より大きい場合の
-`long_prefill_token_threshold`で制限する。evict可能なcache領域は空き容量に含めず、
-新たなevictionが必要な場合はredirect対象とする。これにより、
-`max_num_seqs=128`未満でもKV cache容量が不足すればredirectが発生する。
+第2近傍GPUにも同じ容量判定を適用する。最寄りGPUと第2近傍GPUの双方に容量が
+ない場合は、第3近傍へ連鎖redirectせず、リクエストを待機させて容量解放後に
+最寄り・第2近傍GPUの受理を再判定する。完了済みでevict可能なprefix cacheは予約対象外とし、
+schedulerが必要に応じてevictできる。これにより、`max_num_seqs=128`未満でもKV容量
+不足でredirectが発生し、受理後のdecode KV成長による実行時OOMも防止する。
 
 ### 9.2 機能確認ケース
 

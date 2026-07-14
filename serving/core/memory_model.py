@@ -639,6 +639,30 @@ class MemoryModel():
         if npu_byte_free > 0:
             self.free(npu_byte_free, Device.NPU)
         if npu_byte_alloc > 0:
+            # A batch reserves the blocks it expects to add before execution,
+            # but cache-tree updates can expose a small allocation delta only
+            # after the batch completes (for example at a page boundary).
+            # Reclaim unlocked, finished prefixes here as a final guard so a
+            # valid active request does not fail merely because evictable cache
+            # entries still occupy the physical NPU allocation counter.
+            physical_free = self.npu_mem - self.npu_used
+            shortfall = max(0, npu_byte_alloc - physical_free)
+            if shortfall > 0:
+                evictable_bytes = self.evictable_size(Device.NPU)
+                if evictable_bytes > 0:
+                    self.evict_prefix_cache(
+                        min(shortfall, evictable_bytes), Device.NPU
+                    )
+
+            physical_free = self.npu_mem - self.npu_used
+            if npu_byte_alloc > physical_free:
+                raise RuntimeError(
+                    f"[MemoryModel] [node_id={self.node_id},inst={self.instance_id}] "
+                    f"NPU KV growth needs {npu_byte_alloc / MB_TO_BYTE:.2f}MB but "
+                    f"only {physical_free / MB_TO_BYTE:.2f}MB is physically free "
+                    "after evicting all unlocked prefix-cache entries; active KV "
+                    "reservation or cache accounting is inconsistent."
+                )
             self.allocate(npu_byte_alloc, Device.NPU)
         # if npu_byte_free > 0:
         #     self.free(npu_byte_free, Device.NPU)

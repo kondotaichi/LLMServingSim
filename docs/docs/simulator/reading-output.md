@@ -67,8 +67,11 @@ decision that caused a request to leave its nearest GPU:
 | `redirect_capacity_reason` | `sequence_full`, `npu_memory`, or `sequence_and_memory`; blank when no capacity redirect occurred |
 | `capacity_running_reqs` | Running requests at the nearest GPU when admission was rejected |
 | `capacity_max_num_seqs` | Sequence limit used by that admission check |
-| `capacity_required_kv_bytes` | Block-rounded reusable prefix plus next-prefill-chunk KV bytes required by the new request |
-| `capacity_free_npu_bytes` | Physical NPU bytes free at the admission check; evictable cache space is excluded |
+| `capacity_required_kv_bytes` | Block-rounded KV bytes reserved for the new request's complete maximum context |
+| `capacity_free_npu_bytes` | Physical NPU bytes free when the nearest-GPU check failed (diagnostic only) |
+| `capacity_projected_active_kv_bytes` | Complete-context KV reservation for all waiting and inflight requests already admitted to the nearest GPU |
+| `capacity_kv_budget_bytes` | Total NPU capacity available to KV after fixed model weights |
+| `capacity_available_kv_bytes` | Logical KV capacity remaining after active-request reservations |
 
 These fields make memory-triggered redirects directly auditable: a row with
 `redirect_capacity_reason=npu_memory` and
