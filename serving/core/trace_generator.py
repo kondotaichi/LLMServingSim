@@ -1,5 +1,6 @@
 import os
 import re
+from io import StringIO
 from .request import *
 from .utils import *
 import pandas as pd
@@ -22,6 +23,16 @@ from dataclasses import dataclass, field
 _perf_db_cache = {}
 
 logger = get_logger("TraceGenerator")
+
+_trace_io_backend = "buffered"
+
+
+def configure_trace_io(backend):
+    """Select legacy file rewriting or single-write buffered trace output."""
+    global _trace_io_backend
+    if backend not in ("legacy", "buffered"):
+        raise ValueError(f"Unknown trace I/O backend: {backend}")
+    _trace_io_backend = backend
 
 
 # ----------------------------------------------------------------------
@@ -1296,7 +1307,7 @@ def _synthesize_trace(hardware, model, config, tp_size, pp_size, local_ep, ep_to
                       enable_attn_offloading, power_model, pim_model, fp,
                       variant, kv_cache_dtype='auto',
                       runtime_max_num_batched_tokens=None, runtime_max_num_seqs=None,
-                      tp_dim=None, ep_dim=None, dp_sum_total_len=0):
+                      tp_dim=None, ep_dim=None, dp_sum_total_len=0, output_stream=None):
     ctx = _build_trace_ctx(hardware, model, config, tp_size, pp_size, local_ep, ep_total, node_id, fp,
                            placement, gate, enable_attn_offloading, power_model, pim_model, pd_type,
                            variant=variant, kv_cache_dtype=kv_cache_dtype,
@@ -1312,7 +1323,9 @@ def _synthesize_trace(hardware, model, config, tp_size, pp_size, local_ep, ep_to
         extra={"node_id": node_id, "instance_id": instance_id},
     )
 
-    with open(output_path, 'w') as f:
+    close_output = output_stream is None
+    f = open(output_path, 'w') if close_output else output_stream
+    try:
         _emit_prologue(ctx, bctx, f)
 
         # Transformer blocks
@@ -1338,6 +1351,9 @@ def _synthesize_trace(hardware, model, config, tp_size, pp_size, local_ep, ep_to
         # Final layers
         _emit_final_layers(ctx, bctx, f)
         _emit_pp_pd_power(ctx, bctx)
+    finally:
+        if close_output:
+            f.close()
 
 
 # ======================================================================
@@ -1349,7 +1365,7 @@ def _synthesize_interleaved_trace(hardware, model, config, tp_size, pp_size, loc
                                   enable_attn_offloading, power_model, pim_model, fp,
                                   variant, kv_cache_dtype='auto',
                                   runtime_max_num_batched_tokens=None, runtime_max_num_seqs=None,
-                                  tp_dim=None, ep_dim=None, dp_sum_total_len=0):
+                                  tp_dim=None, ep_dim=None, dp_sum_total_len=0, output_stream=None):
     ctx = _build_trace_ctx(hardware, model, config, tp_size, pp_size, local_ep, ep_total, node_id, fp,
                            placement, gate, enable_attn_offloading, power_model, pim_model, pd_type,
                            variant=variant, kv_cache_dtype=kv_cache_dtype,
@@ -1374,7 +1390,9 @@ def _synthesize_interleaved_trace(hardware, model, config, tp_size, pp_size, loc
 
     num_layers = config['num_hidden_layers']
 
-    with open(output_path, 'w') as f:
+    close_output = output_stream is None
+    f = open(output_path, 'w') if close_output else output_stream
+    try:
         # PROLOGUE: Batch1 prologue + first pre-attn
         _emit_prologue(ctx, bctx1, f, 'BATCH_1')
 
@@ -1438,6 +1456,9 @@ def _synthesize_interleaved_trace(hardware, model, config, tp_size, pp_size, loc
         _emit_final_layers(ctx, bctx2, f, 'BATCH_2')
 
         _emit_pp_pd_power(ctx, bctx1)
+    finally:
+        if close_output:
+            f.close()
 
 
 # ======================================================================
@@ -1502,20 +1523,24 @@ def generate_trace(batch, hardware, tp_size, pp_size, local_ep, ep_total, pd_typ
                         runtime_max_num_batched_tokens=max_num_batched_tokens,
                         runtime_max_num_seqs=max_num_seqs,
                         tp_dim=tp_dim, ep_dim=ep_dim, dp_sum_total_len=dp_sum_total_len)
+    trace_buffer = StringIO() if _trace_io_backend == "buffered" else None
     if not enable_sub_batch_interleaving:
-        _synthesize_trace(*synth_args, batch, max_len, output_path, **synth_kwargs)
+        _synthesize_trace(*synth_args, batch, max_len, output_path,
+                          output_stream=trace_buffer, **synth_kwargs)
     else:
         batches = _make_sub_batch(batch)
         if len(batches) < 2 or len(batches[0].requests) == 0 or len(batches[1].requests) == 0:
-            _synthesize_trace(*synth_args, batch, max_len, output_path, **synth_kwargs)
+            _synthesize_trace(*synth_args, batch, max_len, output_path,
+                              output_stream=trace_buffer, **synth_kwargs)
         else:
-            _synthesize_interleaved_trace(*synth_args, batches, max_len, output_path, **synth_kwargs)
+            _synthesize_interleaved_trace(*synth_args, batches, max_len, output_path,
+                                          output_stream=trace_buffer, **synth_kwargs)
 
-    with open(output_path, 'r') as f:
-        dic = []
-        for line in f.readlines():
-            split = re.findall(r'\S+', line)
-            dic.append(split)
+    if trace_buffer is None:
+        with open(output_path, 'r') as f:
+            dic = [re.findall(r'\S+', line) for line in f]
+    else:
+        dic = [re.findall(r'\S+', line) for line in trace_buffer.getvalue().splitlines()]
 
     # vllm: open output txt file and add load, evict mem
     mem = []

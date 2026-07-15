@@ -42,6 +42,7 @@
 1. [3方式の詳細分析](reports/03_three_policy_deep_analysis.md)
 2. [3方式の基本比較](reports/02_three_policy_comparison.md)
 3. [次のワークロード感度実験計画](reports/04_workload_sensitivity_plan.md)
+4. [Chakra変換・トレースI/O高速化レポート](reports/05_simulation_runtime_optimization.md)
 
 補助レポート:
 

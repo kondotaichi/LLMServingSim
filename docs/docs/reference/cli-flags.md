@@ -79,6 +79,8 @@ removed after a successful simulation by default.
 | `--run-id` | string | auto-generated | Path-safe id for this simulation run. Used in `astra-sim/inputs/runs/<run-id>` and the `{run_id}` output placeholder |
 | `--inputs-root` | path | `astra-sim/inputs/runs/<run-id>` | Override the generated ASTRA-Sim input root, for example to place intermediates on local SSD or tmpfs |
 | `--cleanup-inputs` / `--no-cleanup-inputs` | bool | `true` | Remove generated trace files after Chakra conversion and remove the generated run directory after a successful simulation. Use `--no-cleanup-inputs` to preserve traces, Chakra workloads, and input configs for debugging |
+| `--graph-converter` | `in-process` / `subprocess` | `in-process` | Run the Chakra LLM converter in the simulator process. Select `subprocess` to restore the legacy per-batch Python subprocess path |
+| `--trace-io` | `buffered` / `legacy` | `buffered` | Build each text trace in memory and write it once. Select `legacy` to restore the previous write/read/rewrite path |
 
 ## Logging
 

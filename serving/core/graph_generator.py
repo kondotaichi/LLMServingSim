@@ -1,11 +1,45 @@
 import os
 import subprocess
+import sys
 from time import time
 from .request import *
 from .logger import get_logger
 from .run_paths import input_path
 
 logger = get_logger("GraphGenerator")
+
+_converter_backend = "in-process"
+
+
+def configure_graph_converter(backend):
+    """Select the Chakra conversion path.
+
+    The subprocess implementation remains available as the compatibility
+    baseline.  The in-process implementation calls the same LLMConverter
+    class without paying Python interpreter startup costs for every batch.
+    """
+    global _converter_backend
+    if backend not in ("subprocess", "in-process"):
+        raise ValueError(f"Unknown graph converter backend: {backend}")
+    _converter_backend = backend
+
+
+def _convert_in_process(chakra, trace_path, output_path, num_npus, npu_offset,
+                        enable_local_offloading):
+    graph_frontend = os.path.dirname(chakra)
+    if graph_frontend not in sys.path:
+        sys.path.insert(0, graph_frontend)
+
+    from chakra.src.converter.llm_converter import LLMConverter
+
+    converter = LLMConverter(
+        trace_path,
+        output_path,
+        num_npus,
+        npu_offset,
+        enable_local_offloading,
+    )
+    converter.convert()
 
 def generate_graph(batch, hardware, num_npus, node_id=0, instance_id=0, npu_offset=0, enable_local_offloading=False, event=False, workload_name=None, inputs_root=None, cleanup_trace=True):
 
@@ -40,7 +74,13 @@ def generate_graph(batch, hardware, num_npus, node_id=0, instance_id=0, npu_offs
 
     logger.debug("Generating graph with command: %s", " ".join(cmd), extra={"node_id": node_id, "instance_id": instance_id})
 
-    subprocess.run(cmd, cwd=chakra, text=True, check=True)
+    if _converter_backend == "in-process":
+        _convert_in_process(
+            chakra, trace_path, output_path, num_npus, npu_offset,
+            enable_local_offloading,
+        )
+    else:
+        subprocess.run(cmd, cwd=chakra, text=True, check=True)
     if cleanup_trace:
         try:
             os.remove(trace_path)

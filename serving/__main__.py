@@ -326,6 +326,12 @@ def main():
                         help='remove generated ASTRA-Sim inputs under astra-sim/inputs/runs/<run-id> '
                         'after a successful simulation (default: enabled). Use --no-cleanup-inputs '
                         'to preserve generated trace files, Chakra workloads, and input configs for debugging')
+    parser.add_argument('--graph-converter', choices=['subprocess', 'in-process'], default='in-process',
+                        help='Chakra graph conversion path. in-process avoids starting Python for every batch '
+                        '(default); subprocess preserves the legacy implementation')
+    parser.add_argument('--trace-io', choices=['legacy', 'buffered'], default='buffered',
+                        help='trace construction path. buffered constructs the trace in memory and writes it once '
+                        '(default); legacy preserves the write/read/rewrite implementation')
     parser.add_argument('--skip-prefill', action='store_true', default=False,
                         help='skip the prefill phase, running decode only')
     parser.add_argument('--num-reqs', type=int, default=0,
@@ -361,6 +367,8 @@ def main():
                         'geographic` (--gpus-output). Read-only input for --geographic-gpu-output coordinates')
 
     args = parser.parse_args()
+    configure_graph_converter(args.graph_converter)
+    configure_trace_io(args.trace_io)
     
     args.run_id = resolve_run_id(args.run_id)
     run_paths = build_run_paths(astra_sim, args.run_id, args.inputs_root)
