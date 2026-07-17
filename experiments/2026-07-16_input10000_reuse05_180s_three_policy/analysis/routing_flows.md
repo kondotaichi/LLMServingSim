@@ -1,0 +1,53 @@
+# Input 10000 / reuse 50% / 180s routing flows
+
+| Policy | Home GPU | Target GPU | Redirected | Requests |
+|---|---:|---:|---:|---:|
+| NEAREST_KV | 0 | 0 | no | 24 |
+| NEAREST_KV | 1 | 1 | no | 30 |
+| NEAREST_KV | 2 | 2 | no | 22 |
+| NEAREST_KV | 3 | 3 | no | 35 |
+| NEAREST_KV | 4 | 4 | no | 49 |
+| NEAREST_KV | 5 | 5 | no | 25 |
+| NEAREST_KV | 6 | 6 | no | 30 |
+| NEAREST_KV | 7 | 7 | no | 29 |
+| NEAREST_KV | 8 | 8 | no | 30 |
+| NEAREST_KV | 9 | 9 | no | 26 |
+| NEAREST_MIGRATE | 0 | 0 | no | 24 |
+| NEAREST_MIGRATE | 1 | 1 | no | 28 |
+| NEAREST_MIGRATE | 1 | 0 | yes | 2 |
+| NEAREST_MIGRATE | 2 | 2 | no | 22 |
+| NEAREST_MIGRATE | 3 | 3 | no | 33 |
+| NEAREST_MIGRATE | 3 | 4 | yes | 2 |
+| NEAREST_MIGRATE | 4 | 4 | no | 37 |
+| NEAREST_MIGRATE | 4 | 5 | yes | 12 |
+| NEAREST_MIGRATE | 5 | 5 | no | 17 |
+| NEAREST_MIGRATE | 5 | 8 | yes | 5 |
+| NEAREST_MIGRATE | 5 | 9 | yes | 3 |
+| NEAREST_MIGRATE | 6 | 6 | no | 28 |
+| NEAREST_MIGRATE | 6 | 5 | yes | 2 |
+| NEAREST_MIGRATE | 7 | 7 | no | 28 |
+| NEAREST_MIGRATE | 7 | 8 | yes | 1 |
+| NEAREST_MIGRATE | 8 | 8 | no | 26 |
+| NEAREST_MIGRATE | 8 | 5 | yes | 2 |
+| NEAREST_MIGRATE | 8 | 7 | yes | 2 |
+| NEAREST_MIGRATE | 9 | 9 | no | 24 |
+| NEAREST_MIGRATE | 9 | 8 | yes | 2 |
+| NEAREST_MIGRATE_KV | 0 | 0 | no | 24 |
+| NEAREST_MIGRATE_KV | 1 | 1 | no | 28 |
+| NEAREST_MIGRATE_KV | 1 | 0 | yes | 2 |
+| NEAREST_MIGRATE_KV | 2 | 2 | no | 22 |
+| NEAREST_MIGRATE_KV | 3 | 3 | no | 33 |
+| NEAREST_MIGRATE_KV | 3 | 4 | yes | 2 |
+| NEAREST_MIGRATE_KV | 4 | 4 | no | 38 |
+| NEAREST_MIGRATE_KV | 4 | 5 | yes | 11 |
+| NEAREST_MIGRATE_KV | 5 | 5 | no | 18 |
+| NEAREST_MIGRATE_KV | 5 | 8 | yes | 4 |
+| NEAREST_MIGRATE_KV | 5 | 9 | yes | 3 |
+| NEAREST_MIGRATE_KV | 6 | 6 | no | 28 |
+| NEAREST_MIGRATE_KV | 6 | 5 | yes | 2 |
+| NEAREST_MIGRATE_KV | 7 | 7 | no | 29 |
+| NEAREST_MIGRATE_KV | 8 | 8 | no | 28 |
+| NEAREST_MIGRATE_KV | 8 | 5 | yes | 1 |
+| NEAREST_MIGRATE_KV | 8 | 7 | yes | 1 |
+| NEAREST_MIGRATE_KV | 9 | 9 | no | 24 |
+| NEAREST_MIGRATE_KV | 9 | 8 | yes | 2 |
