@@ -230,7 +230,9 @@ def main():
     # Diary/implementation/20260705_experiment_1.md.
     parser.add_argument('--request-routing-policy', type=str,
                         choices=['LOAD', 'RR', 'RAND', 'PROMPT', 'QUEUE', 'HYBRID', 'CUSTOM', 'NEAREST',
-                                 'NEAREST_KV', 'NEAREST_REJECT', 'NEAREST_MIGRATE', 'NEAREST_MIGRATE_KV'],
+                                 'NEAREST_KV', 'NEAREST_REJECT', 'NEAREST_MIGRATE', 'NEAREST_MIGRATE_KV',
+                                 'NEAREST_SECOND_TTFT_RESERVE', 'NEAREST_CAPACITY_ONESHOT_KV_RESERVE',
+                                 'NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE'],
                         default='LOAD',
                         help='request routing policy across instances: LOAD (vLLM-style weighted least-loaded, default), '
                         'RR (round-robin), RAND (random), PROMPT (prompt length to token-budget fit), '
@@ -247,7 +249,14 @@ def main():
                         '--gpu-backbone-distance-m) to the second-nearest GPU instead of queueing; the UE<->GPU '
                         'uplink already happened so no UE round trip is charged, only the backbone hop), '
                         'NEAREST_MIGRATE_KV (same as NEAREST_MIGRATE, but when the row has reuse_prefix_toks, '
-                        'also transfer and seed that reusable prefix KV cache on the target GPU)')
+                        'also transfer and seed that reusable prefix KV cache on the target GPU), '
+                        'NEAREST_SECOND_TTFT_RESERVE (compare heuristic TTFT for local wait, cold migration, '
+                        'and KV handoff between the home and second-nearest GPU, with an atomic in-transit '
+                        'reservation on the second-nearest target), NEAREST_CAPACITY_ONESHOT_KV_RESERVE '
+                        '(keep admissible requests local; otherwise make one local-wait versus KV-handoff '
+                        'decision with a margin and predicted local-wait limit), '
+                        'NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE (same one-shot constraints, using the '
+                        'exported offline TTFT component formula instead of the token-time heuristic)')
     parser.add_argument('--gpu-backbone-bandwidth-gbps', type=float, default=None,
                         help='GPU-to-GPU backbone link bandwidth in Gbps, used by NEAREST_MIGRATE and '
                         'NEAREST_MIGRATE_KV for the inter-GPU request forward (distinct from the UE<->GPU '
@@ -270,6 +279,26 @@ def main():
     parser.add_argument('--kv-staging-latency-ns', type=float, default=None,
                         help='CPU staging fixed latency in ns for cross-instance KV migration (NEAREST_MIGRATE_KV). '
                         'Charged once per staging hop (source and target); see --kv-staging-bandwidth-gbytes-per-s.')
+    parser.add_argument('--second-ttft-reserve-token-time-ns', type=float, default=100000.0,
+                        help='Estimated nanoseconds per token used by NEAREST_SECOND_TTFT_RESERVE for queue, '
+                        'capacity-release, and prefill prediction')
+    parser.add_argument('--second-ttft-reserve-iteration-time-ns', type=float, default=1000000.0,
+                        help='Estimated fixed nanoseconds per max-token-budget iteration used by '
+                        'NEAREST_SECOND_TTFT_RESERVE')
+    parser.add_argument('--oneshot-redirect-margin-ns', type=float, default=200000000.0,
+                        help='Minimum predicted TTFT advantage required for immediate redirect under '
+                        'NEAREST_CAPACITY_ONESHOT_KV_RESERVE (default: 200 ms)')
+    parser.add_argument('--oneshot-max-local-wait-ns', type=float, default=1000000000.0,
+                        help='Maximum acceptable predicted local capacity wait at the one-shot decision; '
+                        'this is not a runtime timeout and never causes wait-then-redirect (default: 1 s)')
+    parser.add_argument('--enable-oneshot-target-reservation',
+                        action=argparse.BooleanOptionalAction, default=True,
+                        help='Atomically reserve target KV/slot capacity when a one-shot policy redirects. '
+                        'Use --no-enable-oneshot-target-reservation to isolate prediction-only routing '
+                        '(default: enabled)')
+    parser.add_argument('--ttft-formula-artifact-dir', type=str, default=None,
+                        help='directory containing exported TTFT formula CSV/JSON artifacts; defaults to '
+                        'the 2026-07-16 component-regression artifacts in this repository')
     # <<< SPEC: redirect-on-capacity routing (CLI flags) -----------------------
     parser.add_argument('--expert-routing-policy', type=str,
                         choices=['BALANCED', 'RR', 'RAND', 'CUSTOM'],
@@ -553,7 +582,13 @@ def main():
                     gpu_backbone_distance_m=args.gpu_backbone_distance_m,
                     apn_fixed_propagation_ns=args.apn_fixed_propagation_ns,
                     kv_staging_bandwidth_gbytes_per_s=args.kv_staging_bandwidth_gbytes_per_s,
-                    kv_staging_latency_ns=args.kv_staging_latency_ns)
+                    kv_staging_latency_ns=args.kv_staging_latency_ns,
+                    adaptive_token_time_ns=args.second_ttft_reserve_token_time_ns,
+                    adaptive_iteration_time_ns=args.second_ttft_reserve_iteration_time_ns,
+                    oneshot_redirect_margin_ns=args.oneshot_redirect_margin_ns,
+                    oneshot_max_local_wait_ns=args.oneshot_max_local_wait_ns,
+                    enable_oneshot_target_reservation=args.enable_oneshot_target_reservation,
+                    ttft_formula_artifact_dir=args.ttft_formula_artifact_dir)
     # Power Modeling if enabled
     if power_modeling:
         power_model = PowerModel(power_configs)

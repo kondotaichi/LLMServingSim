@@ -104,6 +104,36 @@ latency fields, and payload sizes). The KV transfer uses
 row when present; otherwise it falls back to the GPU-backbone CLI
 values supplied for `NEAREST_MIGRATE`.
 
+### Home/second-nearest TTFT heuristic with reservation
+
+`NEAREST_SECOND_TTFT_RESERVE` preserves the same home and second-nearest candidate set but
+selects a route per request. It predicts TTFT for local prefix reuse, cold
+migration, and migration with KV handoff. The prediction includes current
+scheduler work, estimated capacity-release work, request and KV transfer time,
+and the remaining prefill tokens. Use `--second-ttft-reserve-token-time-ns` and
+`--second-ttft-reserve-iteration-time-ns` to calibrate its compute-time heuristic
+for the profiled hardware.
+
+When migration wins, the router atomically reserves one target slot, the
+request's complete block-rounded KV footprint, and its expected prefill work.
+Later requests include that in-transit load in their capacity and queue
+predictions. The reservation becomes normal scheduler state when the request
+arrives. This prevents several requests from independently selecting the same
+apparently free target capacity.
+
+The output request CSV records `adaptive_selected_route`, all three predicted
+TTFT values, and the reserved KV bytes and prefill tokens. Existing
+`NEAREST_MIGRATE` and `NEAREST_MIGRATE_KV` behavior is unchanged.
+
+`NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE` keeps every immediately
+admissible request on its home GPU. When home capacity is unavailable, it makes
+one irreversible local-wait versus KV-handoff decision using the exported
+offline TTFT component formula. Router, scheduler, and compute predictions come
+from the formula artifacts; request forwarding, KV transfer, and response
+communication use the simulator's analytical link model. The margin and local
+wait limit are evaluated only at first arrival, so the policy cannot wait and
+then change its decision to redirect.
+
 ### When to use flat
 
 - ShareGPT-style benchmarks (independent prompts).

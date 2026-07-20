@@ -36,7 +36,13 @@ matching runtime knobs per `instances[i]`; see
 
 | Flag | Choices | Default | Description |
 | --- | --- | --- | --- |
-| `--request-routing-policy` | `LOAD` / `RR` / `RAND` / `PROMPT` / `QUEUE` / `HYBRID` / `CUSTOM` | `LOAD` | Cross-instance request routing |
+| `--request-routing-policy` | `LOAD` / `RR` / `RAND` / `PROMPT` / `QUEUE` / `HYBRID` / `CUSTOM` / `NEAREST` / `NEAREST_KV` / `NEAREST_REJECT` / `NEAREST_MIGRATE` / `NEAREST_MIGRATE_KV` / `NEAREST_SECOND_TTFT_RESERVE` / `NEAREST_CAPACITY_ONESHOT_KV_RESERVE` / `NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE` | `LOAD` | Cross-instance request routing |
+| `--second-ttft-reserve-token-time-ns` | float | `100000` | Estimated time per queued or prefill token for `NEAREST_SECOND_TTFT_RESERVE` |
+| `--second-ttft-reserve-iteration-time-ns` | float | `1000000` | Estimated fixed cost per token-budget iteration for `NEAREST_SECOND_TTFT_RESERVE` |
+| `--oneshot-redirect-margin-ns` | float | `200000000` | Required predicted redirect advantage for one-shot policies |
+| `--oneshot-max-local-wait-ns` | float | `1000000000` | Predicted local-wait limit evaluated at arrival; not a runtime timeout |
+| `--enable-oneshot-target-reservation` | bool | `True` | Atomically reserve a selected one-shot target; use `--no-enable-oneshot-target-reservation` for prediction-only routing |
+| `--ttft-formula-artifact-dir` | path | bundled component formula | Override the exported CSV/JSON formula artifacts |
 | `--expert-routing-policy` | `BALANCED` / `RR` / `RAND` / `CUSTOM` | `BALANCED` | MoE expert token routing |
 | `--enable-block-copy` | bool | `True` | Replay one block's trace across layers (set False for per-layer EP variance) |
 

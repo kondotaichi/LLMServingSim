@@ -64,6 +64,12 @@ class Router:
             # KV migration keeps the single-hop distance+serialization model.
             kv_staging_bandwidth_gbytes_per_s=None,
             kv_staging_latency_ns=None,
+            adaptive_token_time_ns=100_000.0,
+            adaptive_iteration_time_ns=1_000_000.0,
+            oneshot_redirect_margin_ns=200_000_000.0,
+            oneshot_max_local_wait_ns=1_000_000_000.0,
+            enable_oneshot_target_reservation=True,
+            ttft_formula_artifact_dir=None,
     ):
         # SPEC: stored for NEAREST_MIGRATE (see _maybe_migrate_and_redirect below).
         self.gpu_backbone_bandwidth_gbps = gpu_backbone_bandwidth_gbps
@@ -71,6 +77,17 @@ class Router:
         self.apn_fixed_propagation_ns = apn_fixed_propagation_ns
         self.kv_staging_bandwidth_gbytes_per_s = kv_staging_bandwidth_gbytes_per_s
         self.kv_staging_latency_ns = kv_staging_latency_ns
+        self.adaptive_token_time_ns = float(adaptive_token_time_ns)
+        self.adaptive_iteration_time_ns = float(adaptive_iteration_time_ns)
+        self.oneshot_redirect_margin_ns = float(oneshot_redirect_margin_ns)
+        self.oneshot_max_local_wait_ns = float(oneshot_max_local_wait_ns)
+        self.enable_oneshot_target_reservation = bool(enable_oneshot_target_reservation)
+        self.ttft_formula = None
+        if self.adaptive_token_time_ns <= 0 or self.adaptive_iteration_time_ns <= 0:
+            raise ValueError("Adaptive routing time estimates must be positive")
+        if self.oneshot_redirect_margin_ns < 0 or self.oneshot_max_local_wait_ns < 0:
+            raise ValueError("One-shot routing margin and local-wait limit must be non-negative")
+        self._adaptive_reservations = {}
         self.schedulers = schedulers
         self.num_instances = num_instances
         self.prefill_schedulers = [s for s in schedulers if s.pd_type != "decode"]
@@ -123,11 +140,22 @@ class Router:
             self._select_instance = self._nearest_select
         elif self.routing_policy == "NEAREST_MIGRATE_KV":
             self._select_instance = self._nearest_select
+        elif self.routing_policy == "NEAREST_SECOND_TTFT_RESERVE":
+            self._select_instance = self._nearest_select
+        elif self.routing_policy == "NEAREST_CAPACITY_ONESHOT_KV_RESERVE":
+            self._select_instance = self._nearest_select
+        elif self.routing_policy == "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE":
+            self._select_instance = self._nearest_select
         # <<< SPEC: redirect-on-capacity routing
         else:
             raise ValueError(f"Unknown routing_policy '{routing_policy}'. "
                              "Supported: RR, RAND, LOAD, PROMPT, QUEUE, HYBRID, CUSTOM, NEAREST, "
-                             "NEAREST_KV, NEAREST_REJECT, NEAREST_MIGRATE, NEAREST_MIGRATE_KV")
+                             "NEAREST_KV, NEAREST_REJECT, NEAREST_MIGRATE, NEAREST_MIGRATE_KV, "
+                             "NEAREST_SECOND_TTFT_RESERVE, NEAREST_CAPACITY_ONESHOT_KV_RESERVE, "
+                             "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE")
+        if self.routing_policy == "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE":
+            from .ttft_formula import OfflineTtftFormula
+            self.ttft_formula = OfflineTtftFormula(ttft_formula_artifact_dir)
         self.logger = get_logger(self.__class__)
 
     # -----------------------------------------------------------------------
@@ -315,18 +343,27 @@ class Router:
         blocks = (max(0, int(total_tokens)) + block_size - 1) // block_size
         return sched.memory.get_kv(blocks * block_size)
 
-    @classmethod
-    def _capacity_snapshot(cls, sched, req_data):
+    def _capacity_snapshot(self, sched, req_data):
         """Return an admission snapshot without mutating request state."""
         waiting_reqs = len(sched.request)
         running_reqs = sum(len(batch.requests) for batch in sched.inflight)
         projected_active_kv_bytes = sum(
-            cls._full_request_kv_bytes(sched, req.output)
-            for req in cls._active_requests(sched)
+            self._full_request_kv_bytes(sched, req.output)
+            for req in self._active_requests(sched)
         )
-        required_kv_bytes = cls._full_request_kv_bytes(
+        required_kv_bytes = self._full_request_kv_bytes(
             sched, req_data.get('output_toks', 0)
         )
+        reservations = self._adaptive_reservations.get(sched.instance_id, {})
+        own_id = req_data.get('index')
+        other_reservations = [
+            reservation for request_id, reservation in reservations.items()
+            if request_id != own_id
+        ]
+        reserved_kv_bytes = sum(r['kv_bytes'] for r in other_reservations)
+        reserved_slots = len(other_reservations)
+        reserved_prefill_tokens = sum(r['prefill_tokens'] for r in other_reservations)
+        projected_active_kv_bytes += reserved_kv_bytes
         if sched.memory.enable_prefix_caching:
             kv_budget_bytes = sched.memory.mem_for_kv
             free_npu_bytes = sched.memory.avail_size(Device.NPU)
@@ -335,14 +372,14 @@ class Router:
             free_npu_bytes = sched.memory.npu_mem - sched.memory.npu_used
         available_kv_bytes = max(0, kv_budget_bytes - projected_active_kv_bytes)
         max_num_seqs = int(sched.max_num_seqs)
-        slot_available = running_reqs < max_num_seqs
+        slot_available = running_reqs + reserved_slots < max_num_seqs
         memory_available = required_kv_bytes <= available_kv_bytes
         capacity_pressure = (
             (projected_active_kv_bytes + required_kv_bytes) / kv_budget_bytes
             if kv_budget_bytes > 0 else float('inf')
         )
         slot_pressure = (
-            (running_reqs + 1) / max_num_seqs
+            (running_reqs + reserved_slots + 1) / max_num_seqs
             if max_num_seqs > 0 else float('inf')
         )
         return {
@@ -355,6 +392,9 @@ class Router:
             'projected_active_kv_bytes': projected_active_kv_bytes,
             'kv_budget_bytes': kv_budget_bytes,
             'available_kv_bytes': available_kv_bytes,
+            'reserved_kv_bytes': reserved_kv_bytes,
+            'reserved_slots': reserved_slots,
+            'reserved_prefill_tokens': reserved_prefill_tokens,
             'capacity_pressure': capacity_pressure,
             'slot_pressure': slot_pressure,
             'admissible': int(slot_available and memory_available),
@@ -448,8 +488,7 @@ class Router:
         ):
             geo.pop(key, None)
 
-    @classmethod
-    def _has_capacity(cls, sched, req_data, record_failure=True):
+    def _has_capacity(self, sched, req_data, record_failure=True):
         """Return whether ``sched`` can safely reserve the complete request.
 
         Besides the running-sequence limit, admission reserves block-rounded
@@ -458,7 +497,7 @@ class Router:
         reserved and may be evicted by the scheduler. This prevents a request
         accepted during prefill from exhausting NPU memory later during decode.
         """
-        snapshot = cls._capacity_snapshot(sched, req_data)
+        snapshot = self._capacity_snapshot(sched, req_data)
         running_reqs = snapshot['running_reqs']
         required_kv_bytes = snapshot['required_kv_bytes']
         free_npu_bytes = snapshot['free_npu_bytes']
@@ -770,11 +809,537 @@ class Router:
             'target_instance_id': target_instance_id,
             'reuse_prefix_toks': reuse_prefix_toks,
         }
+
+    def _request_migration_cost_ns(self, geo):
+        backbone_mbps = float(self.gpu_backbone_bandwidth_gbps) * 1000.0
+        if self.apn_fixed_propagation_ns is not None:
+            propagation_ns = round(self.apn_fixed_propagation_ns)
+        else:
+            propagation_ns = round(
+                float(self.gpu_backbone_distance_m) *
+                float(geo['distance_latency_ns_per_meter'])
+            )
+        serialization_ns = round(
+            8000.0 * float(geo['request_payload_bytes']) / backbone_mbps
+        )
+        return propagation_ns + serialization_ns
+
+    def _kv_migration_cost_ns(self, sched, req_data):
+        reuse_tokens = min(
+            int(req_data.get('reuse_prefix_toks', 0)),
+            int(req_data.get('input_toks', 0)),
+        )
+        if reuse_tokens <= 0:
+            return 0
+        migration_bytes = sched.memory.get_kv(reuse_tokens) * sched.num_npus
+        bandwidth_gbps = float(req_data.get(
+            'kv_migration_bandwidth_gbps',
+            self.gpu_backbone_bandwidth_gbps or DEFAULT_KV_MIGRATION_BANDWIDTH_GBPS,
+        ))
+        serialization_ns = round(8.0 * migration_bytes / bandwidth_gbps)
+        if self.apn_fixed_propagation_ns is not None:
+            propagation_ns = round(self.apn_fixed_propagation_ns)
+        else:
+            distance_m = float(req_data.get(
+                'kv_migration_distance_m',
+                self.gpu_backbone_distance_m or DEFAULT_KV_MIGRATION_DISTANCE_M,
+            ))
+            per_meter_ns = float(req_data.get(
+                'distance_latency_ns_per_meter',
+                DEFAULT_DISTANCE_LATENCY_NS_PER_M,
+            ))
+            propagation_ns = round(distance_m * per_meter_ns)
+        apn_leg_ns = propagation_ns + serialization_ns
+        if self.kv_staging_bandwidth_gbytes_per_s is not None and self.kv_staging_latency_ns is not None:
+            staging_ns = (
+                self.kv_staging_latency_ns +
+                migration_bytes / self.kv_staging_bandwidth_gbytes_per_s
+            )
+            return round(staging_ns + apn_leg_ns + staging_ns)
+        return apn_leg_ns
+
+    def _scheduler_work_tokens(self, sched):
+        work = sum(
+            max(0, req.original_input - req.num_computed_tokens)
+            if req.is_prefill() else 1
+            for req in sched.request
+        )
+        for batch in sched.inflight:
+            scheduled = batch.scheduled_tokens or {}
+            work += sum(max(1, int(scheduled.get(req.id, req.chunk_len))) for req in batch.requests)
+        work += sum(
+            reservation['prefill_tokens']
+            for reservation in self._adaptive_reservations.get(sched.instance_id, {}).values()
+        )
+        return work
+
+    def _work_time_ns(self, sched, tokens):
+        tokens = max(0, int(tokens))
+        if tokens == 0:
+            return 0
+        budget = max(1, int(sched.max_num_batched_tokens))
+        iterations = (tokens + budget - 1) // budget
+        return round(
+            tokens * self.adaptive_token_time_ns +
+            iterations * self.adaptive_iteration_time_ns
+        )
+
+    def _capacity_release_wait_ns(self, sched, req_data):
+        snapshot = self._capacity_snapshot(sched, req_data)
+        if snapshot['admissible']:
+            return 0
+        memory_deficit = max(
+            0,
+            snapshot['required_kv_bytes'] - snapshot['available_kv_bytes'],
+        )
+        slots_needed = max(
+            0,
+            snapshot['running_reqs'] + snapshot['reserved_slots'] + 1 -
+            snapshot['max_num_seqs'],
+        )
+        released_bytes = 0
+        released_slots = 0
+        work_tokens = 0
+        candidates = sorted(
+            self._active_requests(sched),
+            key=lambda req: max(1, req.output - req.num_computed_tokens),
+        )
+        for req in candidates:
+            remaining = max(1, req.output - req.num_computed_tokens)
+            work_tokens += remaining
+            released_bytes += self._full_request_kv_bytes(sched, req.output)
+            released_slots += 1
+            if released_bytes >= memory_deficit and released_slots >= slots_needed:
+                break
+        if released_bytes < memory_deficit or released_slots < slots_needed:
+            return float('inf')
+        return self._work_time_ns(sched, work_tokens)
+
+    def _reserve_adaptive_target(self, sched, req_data, prefill_tokens):
+        reservations = self._adaptive_reservations.setdefault(sched.instance_id, {})
+        reservations[req_data['index']] = {
+            'kv_bytes': self._full_request_kv_bytes(sched, req_data['output_toks']),
+            'prefill_tokens': max(0, int(prefill_tokens)),
+            'arrival_time_ns': int(req_data['arrival_time_ns']),
+        }
+
+    def _release_adaptive_reservation(self, req_data):
+        target_id = req_data.get('_adaptive_reserved_instance_id')
+        if target_id is None:
+            return
+        reservations = self._adaptive_reservations.get(target_id, {})
+        reservations.pop(req_data['index'], None)
+        if not reservations:
+            self._adaptive_reservations.pop(target_id, None)
+        req_data.pop('_adaptive_reserved_instance_id', None)
+
+    def _maybe_adaptive_route(self, req_data, current_time_ns):
+        """Choose local wait, cold migration, or KV handoff by predicted TTFT."""
+        geo = req_data.get('geo')
+        if geo is None or 'second_nearest_gpu_id' not in geo:
+            raise RuntimeError(
+                "NEAREST_SECOND_TTFT_RESERVE requires a geographic workload with second-nearest-GPU fields"
+            )
+        if self.gpu_backbone_bandwidth_gbps is None:
+            raise RuntimeError("NEAREST_SECOND_TTFT_RESERVE requires --gpu-backbone-bandwidth-gbps")
+        if self.gpu_backbone_distance_m is None and self.apn_fixed_propagation_ns is None:
+            raise RuntimeError(
+                "NEAREST_SECOND_TTFT_RESERVE requires --gpu-backbone-distance-m or --apn-fixed-propagation-ns"
+            )
+
+        home_id = int(req_data['assigned_instance_id'])
+        target_id = int(geo['second_nearest_gpu_id'])
+        home = self._find_scheduler(self.prefill_schedulers, home_id)
+        target = self._find_scheduler(self.prefill_schedulers, target_id)
+        if home is None or target is None:
+            raise RuntimeError("NEAREST_SECOND_TTFT_RESERVE candidate does not match a prefill instance")
+
+        input_tokens = int(req_data['input_toks'])
+        reuse_tokens = min(input_tokens, int(req_data.get('reuse_prefix_toks', 0)))
+        local_prefill = input_tokens - reuse_tokens
+        local_wait = self._capacity_release_wait_ns(home, req_data)
+        local_queue = self._work_time_ns(home, self._scheduler_work_tokens(home))
+        local_response = float(geo.get('downlink_latency_ns', 0))
+        t_local = (
+            local_wait + local_queue + self._work_time_ns(home, local_prefill) +
+            local_response
+        )
+
+        request_migration = self._request_migration_cost_ns(geo)
+        target_wait = self._capacity_release_wait_ns(target, req_data)
+        target_queue = self._work_time_ns(target, self._scheduler_work_tokens(target))
+        second_distance_m = float(geo['second_nearest_distance_m'])
+        per_meter_ns = float(geo['distance_latency_ns_per_meter'])
+        if self.apn_fixed_propagation_ns is not None:
+            downlink_distance_ns = round(self.apn_fixed_propagation_ns)
+        else:
+            downlink_distance_ns = round(second_distance_m * per_meter_ns)
+        downlink_serialization_ns = round(
+            8000.0 * float(geo['first_token_payload_bytes']) /
+            float(geo['network_throughput_mbps'])
+        )
+        target_response = downlink_distance_ns + downlink_serialization_ns
+        t_cold = (
+            request_migration + target_wait + target_queue +
+            self._work_time_ns(target, input_tokens) + target_response
+        )
+        kv_migration = self._kv_migration_cost_ns(target, req_data)
+        t_kv = (
+            request_migration + kv_migration + target_wait + target_queue +
+            self._work_time_ns(target, input_tokens - reuse_tokens) + target_response
+        )
+
+        choices = [('local', t_local), ('cold_migrate', t_cold)]
+        if reuse_tokens > 0 and target.enable_prefix_caching:
+            choices.append(('kv_handoff', t_kv))
+        mode, predicted_ns = min(choices, key=lambda item: item[1])
+        geo.update({
+            'adaptive_selected_route': mode,
+            'adaptive_predicted_local_ttft_ns': t_local,
+            'adaptive_predicted_cold_ttft_ns': t_cold,
+            'adaptive_predicted_kv_ttft_ns': t_kv,
+            'adaptive_predicted_selected_ttft_ns': predicted_ns,
+            'adaptive_target_reserved_kv_bytes': 0,
+            'adaptive_target_reserved_prefill_tokens': 0,
+        })
+
+        if mode == 'local':
+            if self._has_capacity(home, req_data):
+                self._clear_capacity_failure(req_data)
+                return False
+            return self._defer_capacity_retry(req_data, current_time_ns, home, target)
+
+        prefill_tokens = input_tokens if mode == 'cold_migrate' else input_tokens - reuse_tokens
+        req_data['arrival_time_ns'] = int(current_time_ns) + request_migration
+        self._reserve_adaptive_target(target, req_data, prefill_tokens)
+        req_data['_adaptive_reserved_instance_id'] = target_id
+        geo.update({
+            'nearest_gpu_id': geo.get('gpu_id'),
+            'gpu_id': target_id,
+            'distance_m': second_distance_m,
+            'downlink_distance_latency_ns': downlink_distance_ns,
+            'downlink_serialization_latency_ns': downlink_serialization_ns,
+            'downlink_latency_ns': downlink_distance_ns + downlink_serialization_ns,
+            'communication_latency_ns': (
+                float(geo.get('uplink_latency_ns', 0)) + request_migration +
+                downlink_distance_ns + downlink_serialization_ns
+            ),
+            'rerouted': 1,
+            'migration_latency_ns': request_migration,
+            'adaptive_target_reserved_kv_bytes': self._full_request_kv_bytes(
+                target, req_data['output_toks']
+            ),
+            'adaptive_target_reserved_prefill_tokens': prefill_tokens,
+        })
+        req_data['assigned_instance_id'] = target_id
+        req_data['_adaptive_resolved'] = True
+        if mode == 'kv_handoff':
+            self._attach_kv_handoff(req_data, home_id, target_id)
+        else:
+            req_data.pop('failover', None)
+        return True
+
+    def _ttft_formula_features(self, req_data, candidate_sched):
+        candidate = self._capacity_snapshot(candidate_sched, req_data)
+        snapshots = [
+            self._capacity_snapshot(sched, req_data)
+            for sched in self.prefill_schedulers
+        ]
+        workload = req_data.get('_ttft_formula_workload_features')
+        if workload is None:
+            raise RuntimeError(
+                "TTFT formula workload features were not initialized for this request"
+            )
+        features = dict(workload)
+        candidate_workload = req_data.get(
+            '_ttft_formula_candidate_features', {}
+        ).get(candidate_sched.instance_id)
+        if candidate_workload is not None:
+            features.update(candidate_workload)
+        features.update({
+            'input_tokens': int(req_data['input_toks']),
+            'output_tokens': max(
+                0, int(req_data['output_toks']) - int(req_data['input_toks'])
+            ),
+            'home_cached_prefix_tokens': min(
+                int(req_data['input_toks']), int(req_data.get('reuse_prefix_toks', 0))
+            ),
+            'router_initial_waiting_reqs': candidate['waiting_reqs'],
+            'router_initial_running_reqs': candidate['running_reqs'],
+            'router_initial_required_kv_bytes': candidate['required_kv_bytes'],
+            'router_initial_available_kv_bytes': candidate['available_kv_bytes'],
+            'router_initial_projected_active_kv_bytes': candidate['projected_active_kv_bytes'],
+            'router_initial_capacity_pressure': candidate['capacity_pressure'],
+            'router_initial_slot_pressure': candidate['slot_pressure'],
+            'router_initial_admissible_candidate_count': sum(
+                snapshot['admissible'] for snapshot in snapshots
+            ),
+            'router_initial_total_waiting_reqs': sum(
+                snapshot['waiting_reqs'] for snapshot in snapshots
+            ),
+            'router_initial_max_waiting_reqs': max(
+                snapshot['waiting_reqs'] for snapshot in snapshots
+            ),
+            'router_initial_total_running_reqs': sum(
+                snapshot['running_reqs'] for snapshot in snapshots
+            ),
+            'router_initial_max_running_reqs': max(
+                snapshot['running_reqs'] for snapshot in snapshots
+            ),
+            'router_initial_min_available_kv_bytes': min(
+                snapshot['available_kv_bytes'] for snapshot in snapshots
+            ),
+            'router_initial_max_available_kv_bytes': max(
+                snapshot['available_kv_bytes'] for snapshot in snapshots
+            ),
+            'router_initial_min_capacity_pressure': min(
+                snapshot['capacity_pressure'] for snapshot in snapshots
+            ),
+            'router_initial_max_capacity_pressure': max(
+                snapshot['capacity_pressure'] for snapshot in snapshots
+            ),
+        })
+        return features
+
+    def _maybe_capacity_oneshot_route(self, req_data, current_time_ns):
+        """Make one capacity-gated local-or-redirect decision at first arrival."""
+        geo = req_data.get('geo')
+        if geo is None or 'second_nearest_gpu_id' not in geo:
+            raise RuntimeError(
+                "NEAREST_CAPACITY_ONESHOT_KV_RESERVE requires a geographic workload "
+                "with second-nearest-GPU fields"
+            )
+        if self.gpu_backbone_bandwidth_gbps is None:
+            raise RuntimeError(
+                "NEAREST_CAPACITY_ONESHOT_KV_RESERVE requires --gpu-backbone-bandwidth-gbps"
+            )
+        if self.gpu_backbone_distance_m is None and self.apn_fixed_propagation_ns is None:
+            raise RuntimeError(
+                "NEAREST_CAPACITY_ONESHOT_KV_RESERVE requires --gpu-backbone-distance-m "
+                "or --apn-fixed-propagation-ns"
+            )
+
+        home_id = int(req_data.get('_oneshot_home_instance_id', req_data['assigned_instance_id']))
+        target_id = int(geo['second_nearest_gpu_id'])
+        home = self._find_scheduler(self.prefill_schedulers, home_id)
+        target = self._find_scheduler(self.prefill_schedulers, target_id)
+        if home is None or target is None:
+            raise RuntimeError(
+                "NEAREST_CAPACITY_ONESHOT_KV_RESERVE candidate does not match a prefill instance"
+            )
+
+        selected = req_data.get('_oneshot_selected_route')
+        if selected == 'local':
+            if self._has_capacity(home, req_data):
+                self._clear_capacity_failure(req_data)
+                return False
+            return self._defer_capacity_retry(req_data, current_time_ns, home, target)
+        if selected in ('cold_migrate', 'kv_handoff'):
+            return False
+
+        req_data['_oneshot_home_instance_id'] = home_id
+        if self._has_capacity(home, req_data):
+            req_data['_oneshot_selected_route'] = 'local'
+            geo.update({
+                'oneshot_selected_route': 'local',
+                'oneshot_decision_reason': 'home_admissible',
+                'oneshot_decision_time_ns': int(current_time_ns),
+            })
+            self._clear_capacity_failure(req_data)
+            return False
+
+        input_tokens = int(req_data['input_toks'])
+        reuse_tokens = min(input_tokens, int(req_data.get('reuse_prefix_toks', 0)))
+        target_snapshot = self._capacity_snapshot(target, req_data)
+        target_admissible = bool(target_snapshot['admissible'])
+        request_migration = self._request_migration_cost_ns(geo)
+        kv_migration = self._kv_migration_cost_ns(target, req_data) if reuse_tokens > 0 else 0
+        target_prefill = input_tokens - reuse_tokens if reuse_tokens > 0 else input_tokens
+        second_distance_m = float(geo['second_nearest_distance_m'])
+        per_meter_ns = float(geo['distance_latency_ns_per_meter'])
+        downlink_distance_ns = round(
+            self.apn_fixed_propagation_ns
+            if self.apn_fixed_propagation_ns is not None
+            else second_distance_m * per_meter_ns
+        )
+        downlink_serialization_ns = round(
+            8000.0 * float(geo['first_token_payload_bytes']) /
+            float(geo['network_throughput_mbps'])
+        )
+        if self.ttft_formula is not None:
+            local_features = self._ttft_formula_features(req_data, home)
+            target_features = self._ttft_formula_features(req_data, target)
+            local_prediction = self.ttft_formula.predict(
+                local_features, 'NEAREST_KV'
+            )
+            redirect_prediction = self.ttft_formula.predict(
+                target_features, 'NEAREST_MIGRATE_KV'
+            )
+            local_wait = local_prediction['route_ms'] * 1e6
+            local_total = (
+                local_prediction['ttft_ms'] * 1e6
+                + float(geo.get('downlink_latency_ns', 0))
+            )
+            redirect_total = (
+                redirect_prediction['ttft_ms'] * 1e6
+                + request_migration + kv_migration
+                + downlink_distance_ns + downlink_serialization_ns
+            )
+            geo.update({
+                'oneshot_prediction_model': 'offline_ttft_formula',
+                'oneshot_formula_local_route_probability': local_prediction['route_probability'],
+                'oneshot_formula_local_route_positive_ms': local_prediction['route_positive_ms'],
+                'oneshot_formula_local_route_ms': local_prediction['route_ms'],
+                'oneshot_formula_local_scheduler_ms': local_prediction['scheduler_ms'],
+                'oneshot_formula_local_compute_ms': local_prediction['compute_ms'],
+                'oneshot_formula_redirect_route_probability': redirect_prediction['route_probability'],
+                'oneshot_formula_redirect_route_positive_ms': redirect_prediction['route_positive_ms'],
+                'oneshot_formula_redirect_route_ms': redirect_prediction['route_ms'],
+                'oneshot_formula_redirect_scheduler_ms': redirect_prediction['scheduler_ms'],
+                'oneshot_formula_redirect_compute_ms': redirect_prediction['compute_ms'],
+            })
+        else:
+            geo['oneshot_prediction_model'] = 'token_time_heuristic'
+            local_wait = self._capacity_release_wait_ns(home, req_data)
+            local_total = (
+                local_wait + self._work_time_ns(home, input_tokens - reuse_tokens) +
+                float(geo.get('downlink_latency_ns', 0))
+            )
+            target_queue = self._work_time_ns(target, self._scheduler_work_tokens(target))
+            redirect_total = (
+                request_migration + kv_migration + target_queue +
+                self._work_time_ns(target, target_prefill) +
+                downlink_distance_ns + downlink_serialization_ns
+            )
+        margin_wins = redirect_total + self.oneshot_redirect_margin_ns < local_total
+        deadline_exceeded = local_wait > self.oneshot_max_local_wait_ns
+        should_redirect = target_admissible and (margin_wins or deadline_exceeded)
+
+        geo.update({
+            'oneshot_decision_time_ns': int(current_time_ns),
+            'oneshot_predicted_local_wait_ns': local_wait,
+            'oneshot_predicted_local_ttft_ns': local_total,
+            'oneshot_predicted_redirect_ttft_ns': redirect_total,
+            'oneshot_redirect_margin_ns': self.oneshot_redirect_margin_ns,
+            'oneshot_max_local_wait_ns': self.oneshot_max_local_wait_ns,
+            'oneshot_target_admissible': int(target_admissible),
+            'oneshot_target_reservation_enabled': int(
+                self.enable_oneshot_target_reservation
+            ),
+        })
+
+        if not should_redirect:
+            if not target_admissible:
+                reason = 'target_not_admissible'
+            elif not margin_wins and not deadline_exceeded:
+                reason = 'local_within_margin_and_deadline'
+            else:
+                reason = 'local_selected'
+            req_data['_oneshot_selected_route'] = 'local'
+            geo['oneshot_selected_route'] = 'local'
+            geo['oneshot_decision_reason'] = reason
+            return self._defer_capacity_retry(req_data, current_time_ns, home, target)
+
+        mode = 'kv_handoff' if reuse_tokens > 0 and target.enable_prefix_caching else 'cold_migrate'
+        req_data['_oneshot_selected_route'] = mode
+        geo['oneshot_selected_route'] = mode
+        geo['oneshot_decision_reason'] = (
+            'predicted_local_wait_exceeds_limit' if deadline_exceeded
+            else 'redirect_beats_local_by_margin'
+        )
+        req_data['arrival_time_ns'] = int(current_time_ns) + request_migration
+        if self.enable_oneshot_target_reservation:
+            self._reserve_adaptive_target(target, req_data, target_prefill)
+            req_data['_adaptive_reserved_instance_id'] = target_id
+        req_data['assigned_instance_id'] = target_id
+        geo.update({
+            'nearest_gpu_id': geo.get('gpu_id'),
+            'gpu_id': target_id,
+            'distance_m': second_distance_m,
+            'downlink_distance_latency_ns': downlink_distance_ns,
+            'downlink_serialization_latency_ns': downlink_serialization_ns,
+            'downlink_latency_ns': downlink_distance_ns + downlink_serialization_ns,
+            'communication_latency_ns': (
+                float(geo.get('uplink_latency_ns', 0)) + request_migration +
+                downlink_distance_ns + downlink_serialization_ns
+            ),
+            'rerouted': 1,
+            'migration_latency_ns': request_migration,
+        })
+        if mode == 'kv_handoff':
+            self._attach_kv_handoff(req_data, home_id, target_id)
+        else:
+            req_data.pop('failover', None)
+        return True
     # <<< SPEC: redirect-on-capacity routing (helpers) -------------------------
 
     # -----------------------------------------------------------------------
     # Request loading and real-time routing
     # -----------------------------------------------------------------------
+
+    def _annotate_ttft_formula_features(self):
+        """Precompute send-time workload features used by the offline formula."""
+        if self.ttft_formula is None or not self._pending_requests:
+            return
+        records = []
+        for req_data in self._pending_requests:
+            geo = req_data.get('geo') or {}
+            if 'assigned_instance_id' not in req_data:
+                continue
+            send_time = int(geo.get('request_send_time_ns', req_data['arrival_time_ns']))
+            records.append((send_time, int(req_data['assigned_instance_id']), req_data))
+        if not records:
+            return
+        records.sort(key=lambda item: item[0])
+        first_send = records[0][0]
+        duration_s = max((records[-1][0] - first_send) / 1e9, 1e-9)
+        request_rate = (len(records) - 1) / duration_s
+        home_counts = {}
+        for _, home_id, _ in records:
+            home_counts[home_id] = home_counts.get(home_id, 0) + 1
+
+        previous_send = first_send
+        for position, (send_time, home_id, req_data) in enumerate(records):
+            prior = records[:position]
+            req_data['_ttft_formula_workload_features'] = {
+                'request_rate_rps': request_rate,
+                'arrival_offset_s': (send_time - first_send) / 1e9,
+                'interarrival_ms': (send_time - previous_send) / 1e6,
+                'global_arrivals_1s': sum(
+                    prior_send >= send_time - 1_000_000_000
+                    for prior_send, _, _ in prior
+                ),
+                'global_arrivals_5s': sum(
+                    prior_send >= send_time - 5_000_000_000
+                    for prior_send, _, _ in prior
+                ),
+                'home_arrivals_1s': sum(
+                    prior_send >= send_time - 1_000_000_000 and prior_home == home_id
+                    for prior_send, prior_home, _ in prior
+                ),
+                'home_arrivals_5s': sum(
+                    prior_send >= send_time - 5_000_000_000 and prior_home == home_id
+                    for prior_send, prior_home, _ in prior
+                ),
+                'home_workload_share': home_counts[home_id] / len(records),
+            }
+            req_data['_ttft_formula_candidate_features'] = {
+                candidate_id: {
+                    'home_arrivals_1s': sum(
+                        prior_send >= send_time - 1_000_000_000
+                        and prior_home == candidate_id
+                        for prior_send, prior_home, _ in prior
+                    ),
+                    'home_arrivals_5s': sum(
+                        prior_send >= send_time - 5_000_000_000
+                        and prior_home == candidate_id
+                        for prior_send, prior_home, _ in prior
+                    ),
+                    'home_workload_share': home_counts.get(candidate_id, 0) / len(records),
+                }
+                for candidate_id in home_counts
+            }
+            previous_send = send_time
 
     def load_requests(self, path, enable_prefix_caching=False, is_init=True):
         """Load requests from dataset into pending queue (not yet routed).
@@ -806,6 +1371,7 @@ class Router:
         # Sort pending requests by arrival time (agentic first sub-requests
         # may interleave with flat requests)
         self._pending_requests.sort(key=lambda r: r['arrival_time_ns'])
+        self._annotate_ttft_formula_features()
 
         self.logger.info("Loaded %d requests into pending queue "
                          "(%d agentic sessions deferred)",
@@ -834,7 +1400,7 @@ class Router:
         # now assume the same starting condition (every request's prefix is
         # already cached on its *home* GPU); only whether a redirected
         # request's cache follows it to the new GPU differs by policy.
-        if self.routing_policy in ("NEAREST_KV", "NEAREST_MIGRATE_KV", "NEAREST_REJECT", "NEAREST_MIGRATE"):
+        if self.routing_policy in ("NEAREST_KV", "NEAREST_MIGRATE_KV", "NEAREST_REJECT", "NEAREST_MIGRATE", "NEAREST_SECOND_TTFT_RESERVE", "NEAREST_CAPACITY_ONESHOT_KV_RESERVE", "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE"):
             req_data['reuse_prefix_toks'] = int(row.get('reuse_prefix_toks', 0))
         # <<< SPEC: fair-comparison KV baseline
         if enable_prefix_caching:
@@ -843,7 +1409,7 @@ class Router:
                 (
                     failover and failover.get('failover_mode') == 'migrate_kv'
                 ) or (
-                    self.routing_policy in ("NEAREST_KV", "NEAREST_MIGRATE_KV", "NEAREST_REJECT", "NEAREST_MIGRATE")
+                    self.routing_policy in ("NEAREST_KV", "NEAREST_MIGRATE_KV", "NEAREST_REJECT", "NEAREST_MIGRATE", "NEAREST_SECOND_TTFT_RESERVE", "NEAREST_CAPACITY_ONESHOT_KV_RESERVE", "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE")
                     and int(row.get('reuse_prefix_toks', 0)) > 0
                 )
             ) and not input_hash_ids:
@@ -854,7 +1420,7 @@ class Router:
             req_data['assigned_instance_id'] = int(row['assigned_instance_id'])
         if failover:
             req_data['failover'] = failover
-        if self.routing_policy in ("NEAREST_KV", "NEAREST_MIGRATE_KV"):
+        if self.routing_policy in ("NEAREST_KV", "NEAREST_MIGRATE_KV", "NEAREST_SECOND_TTFT_RESERVE", "NEAREST_CAPACITY_ONESHOT_KV_RESERVE", "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE"):
             if 'kv_migration_bandwidth_gbps' in row:
                 req_data['kv_migration_bandwidth_gbps'] = float(row['kv_migration_bandwidth_gbps'])
             if 'kv_migration_distance_m' in row:
@@ -1079,11 +1645,37 @@ class Router:
                     self._insert_pending_sorted(req_data)
                     continue
 
+            if self.routing_policy == "NEAREST_SECOND_TTFT_RESERVE" and not req_data.get('_adaptive_resolved', False):
+                if self._maybe_adaptive_route(req_data, current_time_ns):
+                    self._pending_requests.pop(self._pending_idx)
+                    self._insert_pending_sorted(req_data)
+                    continue
+
+            if self.routing_policy in (
+                "NEAREST_CAPACITY_ONESHOT_KV_RESERVE",
+                "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE",
+            ):
+                if self._maybe_capacity_oneshot_route(req_data, current_time_ns):
+                    self._pending_requests.pop(self._pending_idx)
+                    self._insert_pending_sorted(req_data)
+                    continue
+
             # Capacity may change while a redirected request is in transit.
             # Revalidate the chosen target immediately before final admission.
             if (
-                self.routing_policy in ("NEAREST_REJECT", "NEAREST_MIGRATE", "NEAREST_MIGRATE_KV")
-                and req_data.get('_reject_resolved', False)
+                (
+                    self.routing_policy in ("NEAREST_REJECT", "NEAREST_MIGRATE", "NEAREST_MIGRATE_KV")
+                    and req_data.get('_reject_resolved', False)
+                ) or (
+                    self.routing_policy == "NEAREST_SECOND_TTFT_RESERVE"
+                    and req_data.get('_adaptive_resolved', False)
+                ) or (
+                    self.routing_policy in (
+                        "NEAREST_CAPACITY_ONESHOT_KV_RESERVE",
+                        "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE",
+                    )
+                    and req_data.get('_oneshot_selected_route') in ('cold_migrate', 'kv_handoff')
+                )
             ):
                 target_sched = self._find_scheduler(
                     self.prefill_schedulers, req_data['assigned_instance_id']
@@ -1094,6 +1686,17 @@ class Router:
                         "match any available prefill instance."
                     )
                 if not self._has_capacity(target_sched, req_data, record_failure=False):
+                    if (
+                        self.routing_policy ==
+                        "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE"
+                        and not self.enable_oneshot_target_reservation
+                    ):
+                        req_data.setdefault(
+                            '_router_capacity_wait_start_ns', int(current_time_ns)
+                        )
+                        req_data['_capacity_retry_count'] = int(
+                            req_data.get('_capacity_retry_count', 0)
+                        ) + 1
                     req_data['arrival_time_ns'] = max(
                         int(req_data['arrival_time_ns']), int(current_time_ns) + 1
                     )
@@ -1131,10 +1734,20 @@ class Router:
             if self.routing_policy in ("NEAREST_KV", "NEAREST_MIGRATE_KV") or (
                 self.routing_policy in ("NEAREST_REJECT", "NEAREST_MIGRATE")
                 and not req_data.get('_reject_resolved', False)
+            ) or (
+                self.routing_policy == "NEAREST_SECOND_TTFT_RESERVE"
+                and not req_data.get('_adaptive_resolved', False)
+            ) or (
+                self.routing_policy in (
+                    "NEAREST_CAPACITY_ONESHOT_KV_RESERVE",
+                    "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE",
+                )
+                and req_data.get('_oneshot_selected_route') == 'local'
             ):
                 self._attach_local_kv_reuse(req_data, sched.instance_id)
             # <<< SPEC: fair-comparison KV baseline
             self._apply_kv_migration_if_needed(req_data, sched)
+            self._release_adaptive_reservation(req_data)
             geo = req_data.get('geo')
             if geo is None:
                 geo = {}
