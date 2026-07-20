@@ -315,6 +315,126 @@ class Router:
         blocks = (max(0, int(total_tokens)) + block_size - 1) // block_size
         return sched.memory.get_kv(blocks * block_size)
 
+    @classmethod
+    def _capacity_snapshot(cls, sched, req_data):
+        """Return an admission snapshot without mutating request state."""
+        waiting_reqs = len(sched.request)
+        running_reqs = sum(len(batch.requests) for batch in sched.inflight)
+        projected_active_kv_bytes = sum(
+            cls._full_request_kv_bytes(sched, req.output)
+            for req in cls._active_requests(sched)
+        )
+        required_kv_bytes = cls._full_request_kv_bytes(
+            sched, req_data.get('output_toks', 0)
+        )
+        if sched.memory.enable_prefix_caching:
+            kv_budget_bytes = sched.memory.mem_for_kv
+            free_npu_bytes = sched.memory.avail_size(Device.NPU)
+        else:
+            kv_budget_bytes = sched.memory.npu_mem - sched.memory.weight
+            free_npu_bytes = sched.memory.npu_mem - sched.memory.npu_used
+        available_kv_bytes = max(0, kv_budget_bytes - projected_active_kv_bytes)
+        max_num_seqs = int(sched.max_num_seqs)
+        slot_available = running_reqs < max_num_seqs
+        memory_available = required_kv_bytes <= available_kv_bytes
+        capacity_pressure = (
+            (projected_active_kv_bytes + required_kv_bytes) / kv_budget_bytes
+            if kv_budget_bytes > 0 else float('inf')
+        )
+        slot_pressure = (
+            (running_reqs + 1) / max_num_seqs
+            if max_num_seqs > 0 else float('inf')
+        )
+        return {
+            'instance_id': sched.instance_id,
+            'waiting_reqs': waiting_reqs,
+            'running_reqs': running_reqs,
+            'max_num_seqs': max_num_seqs,
+            'required_kv_bytes': required_kv_bytes,
+            'free_npu_bytes': free_npu_bytes,
+            'projected_active_kv_bytes': projected_active_kv_bytes,
+            'kv_budget_bytes': kv_budget_bytes,
+            'available_kv_bytes': available_kv_bytes,
+            'capacity_pressure': capacity_pressure,
+            'slot_pressure': slot_pressure,
+            'admissible': int(slot_available and memory_available),
+        }
+
+    @staticmethod
+    def _write_capacity_snapshot(geo, prefix, snapshot):
+        for key, value in snapshot.items():
+            geo[f'{prefix}_{key}'] = value
+
+    def _record_initial_capacity_context(self, req_data):
+        """Persist home and candidate capacity state at the first route attempt."""
+        if req_data.get('_router_initial_capacity_recorded', False):
+            return
+        geo = req_data.get('geo')
+        if geo is None:
+            return
+        home_sched = self._find_scheduler(
+            self.prefill_schedulers, req_data.get('assigned_instance_id')
+        )
+        if home_sched is None:
+            return
+        home_snapshot = self._capacity_snapshot(home_sched, req_data)
+        self._write_capacity_snapshot(geo, 'router_initial', home_snapshot)
+
+        target_gpu_id = geo.get('second_nearest_gpu_id')
+        target_sched = self._find_scheduler(
+            self.prefill_schedulers, target_gpu_id
+        ) if target_gpu_id is not None else None
+        if target_sched is not None:
+            target_snapshot = self._capacity_snapshot(target_sched, req_data)
+            self._write_capacity_snapshot(
+                geo, 'router_initial_target', target_snapshot
+            )
+
+        candidate_snapshots = [
+            self._capacity_snapshot(sched, req_data)
+            for sched in self.prefill_schedulers
+        ]
+        geo['router_initial_candidate_count'] = len(candidate_snapshots)
+        geo['router_initial_admissible_candidate_count'] = sum(
+            snapshot['admissible'] for snapshot in candidate_snapshots
+        )
+        geo['router_initial_total_waiting_reqs'] = sum(
+            snapshot['waiting_reqs'] for snapshot in candidate_snapshots
+        )
+        geo['router_initial_max_waiting_reqs'] = max(
+            snapshot['waiting_reqs'] for snapshot in candidate_snapshots
+        )
+        geo['router_initial_total_running_reqs'] = sum(
+            snapshot['running_reqs'] for snapshot in candidate_snapshots
+        )
+        geo['router_initial_max_running_reqs'] = max(
+            snapshot['running_reqs'] for snapshot in candidate_snapshots
+        )
+        geo['router_initial_min_available_kv_bytes'] = min(
+            snapshot['available_kv_bytes'] for snapshot in candidate_snapshots
+        )
+        geo['router_initial_max_available_kv_bytes'] = max(
+            snapshot['available_kv_bytes'] for snapshot in candidate_snapshots
+        )
+        geo['router_initial_min_capacity_pressure'] = min(
+            snapshot['capacity_pressure'] for snapshot in candidate_snapshots
+        )
+        geo['router_initial_max_capacity_pressure'] = max(
+            snapshot['capacity_pressure'] for snapshot in candidate_snapshots
+        )
+        req_data['_router_initial_capacity_recorded'] = True
+
+    def _record_decision_capacity_context(self, req_data, sched):
+        """Persist selected-GPU capacity state immediately before admission."""
+        geo = req_data.get('geo')
+        if geo is None:
+            return
+        snapshot = self._capacity_snapshot(sched, req_data)
+        self._write_capacity_snapshot(geo, 'router_decision', snapshot)
+        geo['router_capacity_retry_count'] = int(
+            req_data.get('_capacity_retry_count', 0)
+        )
+
     @staticmethod
     def _clear_capacity_failure(req_data):
         geo = req_data.get('geo')
@@ -338,23 +458,14 @@ class Router:
         reserved and may be evicted by the scheduler. This prevents a request
         accepted during prefill from exhausting NPU memory later during decode.
         """
-        running_reqs = sum(len(b.requests) for b in sched.inflight)
-        slot_available = running_reqs < sched.max_num_seqs
-
-        projected_active_kv_bytes = sum(
-            cls._full_request_kv_bytes(sched, req.output)
-            for req in cls._active_requests(sched)
-        )
-        required_kv_bytes = cls._full_request_kv_bytes(
-            sched, req_data.get('output_toks', 0)
-        )
-        if sched.memory.enable_prefix_caching:
-            kv_budget_bytes = sched.memory.mem_for_kv
-            free_npu_bytes = sched.memory.avail_size(Device.NPU)
-        else:
-            kv_budget_bytes = sched.memory.npu_mem - sched.memory.weight
-            free_npu_bytes = sched.memory.npu_mem - sched.memory.npu_used
-        available_kv_bytes = max(0, kv_budget_bytes - projected_active_kv_bytes)
+        snapshot = cls._capacity_snapshot(sched, req_data)
+        running_reqs = snapshot['running_reqs']
+        required_kv_bytes = snapshot['required_kv_bytes']
+        free_npu_bytes = snapshot['free_npu_bytes']
+        projected_active_kv_bytes = snapshot['projected_active_kv_bytes']
+        kv_budget_bytes = snapshot['kv_budget_bytes']
+        available_kv_bytes = snapshot['available_kv_bytes']
+        slot_available = running_reqs < snapshot['max_num_seqs']
         memory_available = required_kv_bytes <= available_kv_bytes
 
         if slot_available and memory_available:
@@ -376,13 +487,15 @@ class Router:
         geo.update({
             'redirect_capacity_reason': reason,
             'capacity_running_reqs': running_reqs,
-            'capacity_max_num_seqs': int(sched.max_num_seqs),
+            'capacity_max_num_seqs': snapshot['max_num_seqs'],
             'capacity_required_kv_bytes': required_kv_bytes,
             'capacity_free_npu_bytes': free_npu_bytes,
             'capacity_projected_active_kv_bytes': projected_active_kv_bytes,
             'capacity_kv_budget_bytes': kv_budget_bytes,
             'capacity_available_kv_bytes': available_kv_bytes,
         })
+        geo.setdefault('router_first_block_reason', reason)
+        geo.setdefault('router_first_block_instance_id', sched.instance_id)
         return False
 
     @staticmethod
@@ -401,6 +514,7 @@ class Router:
         req_data['arrival_time_ns'] = max(
             int(req_data['arrival_time_ns']), int(current_time_ns) + 1
         )
+        req_data.setdefault('_router_capacity_wait_start_ns', int(current_time_ns))
         req_data['_capacity_retry_count'] = int(req_data.get('_capacity_retry_count', 0)) + 1
         return True
 
@@ -921,6 +1035,8 @@ class Router:
             if req_data['arrival_time_ns'] > current_time_ns:
                 break
 
+            self._record_initial_capacity_context(req_data)
+
             # >>> SPEC: redirect-on-capacity routing. Base router.py went
             # straight from the arrival check above to
             # `instance_id = self._select_instance(...)` below — everything
@@ -1020,6 +1136,20 @@ class Router:
             # <<< SPEC: fair-comparison KV baseline
             self._apply_kv_migration_if_needed(req_data, sched)
             geo = req_data.get('geo')
+            if geo is None:
+                geo = {}
+                req_data['geo'] = geo
+            self._record_decision_capacity_context(req_data, sched)
+            wait_start = req_data.get('_router_capacity_wait_start_ns')
+            geo['router_capacity_wait_start_ns'] = (
+                int(wait_start) if wait_start is not None else -1
+            )
+            geo['router_decision_time_ns'] = int(current_time_ns)
+            geo['router_capacity_wait_ns'] = (
+                max(0, int(current_time_ns) - int(wait_start))
+                if wait_start is not None else 0
+            )
+            geo['router_candidate_gpu_count'] = len(self.prefill_schedulers)
 
             if sched.enable_prefix_caching:
                 sched.add_request([

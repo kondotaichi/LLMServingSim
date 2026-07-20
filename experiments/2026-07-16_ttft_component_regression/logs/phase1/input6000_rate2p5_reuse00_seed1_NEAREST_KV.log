@@ -1,0 +1,915 @@
+─────────────────────────────── LLMServingSim2.0 ───────────────────────────────
+  A Unified Simulator for Heterogeneous Hardware and Serving Techniques in LLM  
+────────────────────────────────────────────────────────────────────────────────
+      _    _    __  __ ___              _           ___ _       ___   __        
+     | |  | |  |  \/  / __| ___ _ ___ _(_)_ _  __ _/ __(_)_ __ |_  ) /  \       
+     | |__| |__| |\/| \__ \/ -_) '_\ V / | ' \/ _` \__ \ | '  \ / / | () |      
+     |____|____|_|  |_|___/\___|_|  \_/|_|_||_\__, |___/_|_|_|_/___(_)__/       
+                                              |___/                             
+────────────────────────────────────────────────────────────────────────────────
+                              Input configuration                               
+
+  • Cluster config             : configs/cluster/ten_node_rtx4090_apn.json
+  • Run ID                     : ttft-regression-phase1-input6000_rate2p5_reuse00_seed1-NEAREST_KV
+  • ASTRA-Sim inputs root      : /app/LLMServingSim/astra-sim/inputs/runs/ttft-regression-phase1-input6000_rate2p5_reuse00_seed1-NEAREST_KV
+  • Dataset                    : experiments/2026-07-16_ttft_component_regression/workloads/phase1/input6000_rate2p5_reuse00_seed1.jsonl
+  • Max num seqs               : 128
+  • Max batched tokens         : 2048
+  • Block size (tokens)        : 16
+  • Request routing            : NEAREST_KV
+  • Expert routing             : BALANCED
+  • Prefix caching             : ENABLED
+  • Chunked prefill            : ENABLED
+  • Prefix caching scheme      : xPU-Only
+  • Centralized prefix caching : DISABLED
+  • Offload attention to PIM   : DISABLED
+  • Sub-batch interleaving     : DISABLED
+  • Prioritize prefill         : DISABLED
+  • Network backend            : analytical
+  • Log interval (s)           : 1.0
+  • Log level                  : WARNING
+────────────────────────────────────────────────────────────────────────────────
+▶ Starting simulation...
+
+[1.0s] Avg prompt throughput: 12000.0 tokens/s, Avg generation throughput: 25.0 tokens/s
+        ├─Running Instance[0]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[1]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[2]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[3]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16066.51 MB (65.375 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[4]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[5]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[6]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16066.51 MB (65.375 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[8]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[9]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[2.0s] Avg prompt throughput: 2048.0 tokens/s, Avg generation throughput: 114.0 tokens/s
+        ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[1]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[2]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[3]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16074.51 MB (65.407 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[4]: 1 reqs, Waiting: 1 reqs, Total # 1 NPUs, Each NPU Memory Usage 15572.51 MB (63.365 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[5]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[6]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16074.51 MB (65.407 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[8]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[9]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[3.0s] Avg prompt throughput: 14190.0 tokens/s, Avg generation throughput: 141.0 tokens/s
+        ├─Running Instance[0]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16068.51 MB (65.383 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[1]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[2]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[3]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16080.51 MB (65.432 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[4]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16594.51 MB (67.523 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+        ├─Running Instance[5]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[6]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16080.51 MB (65.432 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[8]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[9]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[4.0s] Avg prompt throughput: 17854.0 tokens/s, Avg generation throughput: 228.0 tokens/s
+        ├─Running Instance[0]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17328.51 MB (70.510 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+        ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16066.51 MB (65.375 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[2]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[3]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16088.51 MB (65.464 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[4]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16828.51 MB (68.475 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+        ├─Running Instance[5]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[6]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16088.51 MB (65.464 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[8]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[9]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[5.0s] Avg prompt throughput: 6004.0 tokens/s, Avg generation throughput: 392.0 tokens/s
+        ├─Running Instance[0]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17582.51 MB (71.543 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+        ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16072.51 MB (65.399 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[2]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[3]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16096.51 MB (65.497 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[4]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16840.51 MB (68.524 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+        ├─Running Instance[5]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[6]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16096.51 MB (65.497 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[8]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[9]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15828.51 MB (64.406 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[6.0s] Avg prompt throughput: 14048.0 tokens/s, Avg generation throughput: 421.0 tokens/s
+        ├─Running Instance[0]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17600.51 MB (71.617 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+        ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16080.51 MB (65.432 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[2]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15828.51 MB (64.406 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[3]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16102.51 MB (65.521 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[4]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17594.51 MB (71.592 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+        ├─Running Instance[5]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15572.51 MB (63.365 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[6]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16102.51 MB (65.521 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[8]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[9]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16072.51 MB (65.399 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[7.0s] Avg prompt throughput: 21950.0 tokens/s, Avg generation throughput: 580.0 tokens/s
+        ├─Running Instance[0]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17618.51 MB (71.690 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+        ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16086.51 MB (65.456 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[2]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16072.51 MB (65.399 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[3]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16616.51 MB (67.613 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+        ├─Running Instance[4]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17612.51 MB (71.665 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+        ├─Running Instance[5]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16070.51 MB (65.391 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[6]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16068.51 MB (65.383 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[7]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16854.51 MB (68.581 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+        ├─Running Instance[8]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[9]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16080.51 MB (65.432 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[8.0s] Avg prompt throughput: 12000.0 tokens/s, Avg generation throughput: 669.0 tokens/s
+        ├─Running Instance[0]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17636.51 MB (71.763 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+        ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16094.51 MB (65.489 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[2]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16080.51 MB (65.432 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[3]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16868.51 MB (68.638 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+        ├─Running Instance[4]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18370.51 MB (74.750 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+        ├─Running Instance[5]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16076.51 MB (65.415 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[6]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16582.51 MB (67.474 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+        ├─Running Instance[7]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16868.51 MB (68.638 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+        ├─Running Instance[8]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 15316.51 MB (62.323 % Used)
+        ├─Running Instance[9]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16086.51 MB (65.456 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[9.0s] Avg prompt throughput: 20183.0 tokens/s, Avg generation throughput: 693.0 tokens/s
+        ├─Running Instance[0]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17654.51 MB (71.836 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+        ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16102.51 MB (65.521 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[2]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16086.51 MB (65.456 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[3]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16880.51 MB (68.687 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+        ├─Running Instance[4]: 5 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18638.51 MB (75.840 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+        ├─Running Instance[5]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16590.51 MB (67.507 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+        ├─Running Instance[6]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17336.51 MB (70.542 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+        ├─Running Instance[7]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16882.51 MB (68.695 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+        ├─Running Instance[8]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16066.51 MB (65.375 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+        ├─Running Instance[9]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16344.51 MB (66.506 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+        ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+        └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[10.0s] Avg prompt throughput: 23723.0 tokens/s, Avg generation throughput: 915.0 tokens/s
+         ├─Running Instance[0]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17674.51 MB (71.918 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16108.51 MB (65.546 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[2]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16094.51 MB (65.489 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[3]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16892.51 MB (68.736 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[4]: 5 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19156.51 MB (77.948 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[5]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17584.51 MB (71.552 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[6]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17592.51 MB (71.584 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[7]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17636.51 MB (71.763 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[8]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16074.51 MB (65.407 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[9]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16850.51 MB (68.565 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[11.0s] Avg prompt throughput: 2045.0 tokens/s, Avg generation throughput: 1156.0 tokens/s
+         ├─Running Instance[0]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17692.51 MB (71.991 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16116.51 MB (65.578 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[2]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16100.51 MB (65.513 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[3]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16908.51 MB (68.801 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[4]: 5 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19182.51 MB (78.054 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[5]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17602.51 MB (71.625 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17860.51 MB (72.675 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[7]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17654.51 MB (71.836 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16080.51 MB (65.432 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[9]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16862.51 MB (68.614 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[12.0s] Avg prompt throughput: 15955.0 tokens/s, Avg generation throughput: 1038.0 tokens/s
+         ├─Running Instance[0]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17712.51 MB (72.072 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16122.51 MB (65.603 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[2]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16108.51 MB (65.546 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[3]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16920.51 MB (68.850 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[4]: 6 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19208.51 MB (78.160 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[5]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18360.51 MB (74.709 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18368.51 MB (74.742 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[7]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17674.51 MB (71.918 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16836.51 MB (68.508 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[9]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16878.51 MB (68.679 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[13.0s] Avg prompt throughput: 14047.0 tokens/s, Avg generation throughput: 1157.0 tokens/s
+         ├─Running Instance[0]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17730.51 MB (72.146 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16130.51 MB (65.635 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[2]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16368.51 MB (66.604 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[3]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17674.51 MB (71.918 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[4]: 6 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19970.51 MB (81.260 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[5]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18384.51 MB (74.807 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18392.51 MB (74.839 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[7]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17692.51 MB (71.991 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16848.51 MB (68.557 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[9]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16890.51 MB (68.728 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[14.0s] Avg prompt throughput: 8186.0 tokens/s, Avg generation throughput: 1349.0 tokens/s
+         ├─Running Instance[0]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17748.51 MB (72.219 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16136.51 MB (65.660 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[2]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17392.51 MB (70.770 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[3]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17692.51 MB (71.991 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[4]: 6 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20004.51 MB (81.399 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[5]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18408.51 MB (74.904 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18416.51 MB (74.937 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[7]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17710.51 MB (72.064 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16862.51 MB (68.614 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[9]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16902.51 MB (68.776 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[15.0s] Avg prompt throughput: 1767.0 tokens/s, Avg generation throughput: 1434.0 tokens/s
+         ├─Running Instance[0]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17766.51 MB (72.292 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16144.51 MB (65.692 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[2]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17628.51 MB (71.731 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[3]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17710.51 MB (72.064 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[4]: 6 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20034.51 MB (81.521 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[5]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18432.51 MB (75.002 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18440.51 MB (75.035 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[7]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17722.51 MB (72.113 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16874.51 MB (68.663 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[9]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16914.51 MB (68.825 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[16.0s] Avg prompt throughput: 4088.0 tokens/s, Avg generation throughput: 1310.0 tokens/s
+         ├─Running Instance[0]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17786.51 MB (72.373 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16152.51 MB (65.725 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[2]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17646.51 MB (71.804 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[3]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17724.51 MB (72.121 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[4]: 7 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20312.51 MB (82.652 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[5]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18452.51 MB (75.083 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18464.51 MB (75.132 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[7]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17986.51 MB (73.187 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16888.51 MB (68.720 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[9]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16930.51 MB (68.890 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[17.0s] Avg prompt throughput: 7912.0 tokens/s, Avg generation throughput: 1229.0 tokens/s
+         ├─Running Instance[0]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17798.51 MB (72.422 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16158.51 MB (65.749 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[2]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17664.51 MB (71.877 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[3]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17740.51 MB (72.186 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[4]: 7 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20830.51 MB (84.760 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[5]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18476.51 MB (75.181 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18488.51 MB (75.230 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[7]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18492.51 MB (75.246 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16900.51 MB (68.768 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[9]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16936.51 MB (68.915 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[18.0s] Avg prompt throughput: 10082.0 tokens/s, Avg generation throughput: 1112.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17810.51 MB (72.471 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16160.51 MB (65.757 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[2]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18424.51 MB (74.970 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[3]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17750.51 MB (72.227 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[4]: 8 reqs, Waiting: 1 reqs, Total # 1 NPUs, Each NPU Memory Usage 21354.51 MB (86.892 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 48000)
+         ├─Running Instance[5]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18500.51 MB (75.279 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18512.51 MB (75.328 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[7]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18510.51 MB (75.319 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16914.51 MB (68.825 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[9]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16944.51 MB (68.947 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[19.0s] Avg prompt throughput: 8038.0 tokens/s, Avg generation throughput: 1002.0 tokens/s
+         ├─Running Instance[0]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17816.51 MB (72.496 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16160.51 MB (65.757 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 6000)
+         ├─Running Instance[2]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18446.51 MB (75.059 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[3]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17758.51 MB (72.260 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[4]: 10 reqs, Waiting: 1 reqs, Total # 1 NPUs, Each NPU Memory Usage 22362.51 MB (90.993 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 60000)
+         ├─Running Instance[5]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18524.51 MB (75.376 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18534.51 MB (75.417 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[7]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18532.51 MB (75.409 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16928.51 MB (68.882 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[9]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16950.51 MB (68.972 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[20.0s] Avg prompt throughput: 16342.0 tokens/s, Avg generation throughput: 854.0 tokens/s
+         ├─Running Instance[0]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17816.51 MB (72.496 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16416.51 MB (66.799 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[2]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18714.51 MB (76.150 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18270.51 MB (74.343 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 23388.51 MB (95.168 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 66000)
+         ├─Running Instance[5]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18546.51 MB (75.466 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18556.51 MB (75.507 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[7]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18550.51 MB (75.482 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16940.51 MB (68.931 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[9]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16958.51 MB (69.004 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[21.0s] Avg prompt throughput: 19670.0 tokens/s, Avg generation throughput: 1027.0 tokens/s
+         ├─Running Instance[0]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17816.51 MB (72.496 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16914.51 MB (68.825 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[2]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19224.51 MB (78.225 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18522.51 MB (75.368 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 23882.51 MB (97.178 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 66000)
+         ├─Running Instance[5]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18564.51 MB (75.539 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[6]: 6 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19330.51 MB (78.656 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[7]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18568.51 MB (75.555 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16952.51 MB (68.980 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[9]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16966.51 MB (69.037 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[22.0s] Avg prompt throughput: 7913.0 tokens/s, Avg generation throughput: 1237.0 tokens/s
+         ├─Running Instance[0]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17816.51 MB (72.496 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16920.51 MB (68.850 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[2]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19248.51 MB (78.322 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18536.51 MB (75.425 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[4]: 10 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 23932.51 MB (97.382 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 66000)
+         ├─Running Instance[5]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18834.51 MB (76.638 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[6]: 7 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20074.51 MB (81.683 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[7]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18586.51 MB (75.629 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16966.51 MB (69.037 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[9]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16972.51 MB (69.061 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[23.0s] Avg prompt throughput: 14047.0 tokens/s, Avg generation throughput: 1181.0 tokens/s
+         ├─Running Instance[0]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17816.51 MB (72.496 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16928.51 MB (68.882 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[2]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19270.51 MB (78.412 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19052.51 MB (77.525 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[4]: 10 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 23978.51 MB (97.569 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 66000)
+         ├─Running Instance[5]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19344.51 MB (78.713 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[6]: 7 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20840.51 MB (84.800 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[7]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18598.51 MB (75.678 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16980.51 MB (69.094 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[9]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16980.51 MB (69.094 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[24.0s] Avg prompt throughput: 5984.0 tokens/s, Avg generation throughput: 1134.0 tokens/s
+         ├─Running Instance[0]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17816.51 MB (72.496 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16934.51 MB (68.907 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[2]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19294.51 MB (78.510 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19306.51 MB (78.558 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24196.51 MB (98.456 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 72000)
+         ├─Running Instance[5]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19364.51 MB (78.794 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[6]: 7 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20874.51 MB (84.939 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18608.51 MB (75.718 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[8]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16988.51 MB (69.126 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[9]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16980.51 MB (69.094 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[25.0s] Avg prompt throughput: 6019.0 tokens/s, Avg generation throughput: 1258.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18072.51 MB (73.537 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16942.51 MB (68.939 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[2]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19318.51 MB (78.607 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19322.51 MB (78.623 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24486.51 MB (99.636 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 72000)
+         ├─Running Instance[5]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19384.51 MB (78.876 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[6]: 6 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20910.51 MB (85.085 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18614.51 MB (75.743 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17246.51 MB (70.176 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[9]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16980.51 MB (69.094 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[26.0s] Avg prompt throughput: 11995.0 tokens/s, Avg generation throughput: 1228.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18570.51 MB (75.564 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16950.51 MB (68.972 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[2]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19342.51 MB (78.705 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19336.51 MB (78.680 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[4]: 10 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24530.51 MB (99.815 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 72000)
+         ├─Running Instance[5]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19902.51 MB (80.984 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[6]: 6 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20940.51 MB (85.207 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18622.51 MB (75.775 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17750.51 MB (72.227 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[9]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16980.51 MB (69.094 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[27.0s] Avg prompt throughput: 8040.0 tokens/s, Avg generation throughput: 1113.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18576.51 MB (75.588 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16956.51 MB (68.996 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Running Instance[2]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19364.51 MB (78.794 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19850.51 MB (80.772 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24296.51 MB (98.863 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 78000)
+         ├─Running Instance[5]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20162.51 MB (82.041 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[6]: 5 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20970.51 MB (85.329 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18628.51 MB (75.800 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[8]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17762.51 MB (72.276 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[9]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16980.51 MB (69.094 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[28.0s] Avg prompt throughput: 19917.0 tokens/s, Avg generation throughput: 1062.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18584.51 MB (75.621 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17216.51 MB (70.054 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[2]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19382.51 MB (78.868 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20844.51 MB (84.817 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24520.51 MB (99.774 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 78000)
+         ├─Running Instance[5]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20178.51 MB (82.107 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20998.51 MB (85.443 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18636.51 MB (75.832 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18514.51 MB (75.336 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[9]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16980.51 MB (69.094 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[29.0s] Avg prompt throughput: 8029.0 tokens/s, Avg generation throughput: 1092.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18592.51 MB (75.653 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 17718.51 MB (72.097 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 18000)
+         ├─Running Instance[2]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19402.51 MB (78.949 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20868.51 MB (84.914 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24222.51 MB (98.562 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 84000)
+         ├─Running Instance[5]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20192.51 MB (82.164 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21022.51 MB (85.541 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18644.51 MB (75.865 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[8]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18530.51 MB (75.401 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[9]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 16980.51 MB (69.094 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 12000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[30.0s] Avg prompt throughput: 28252.0 tokens/s, Avg generation throughput: 1078.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18598.51 MB (75.678 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18724.51 MB (76.190 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[2]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19420.51 MB (79.022 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20892.51 MB (85.012 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24504.51 MB (99.709 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 84000)
+         ├─Running Instance[5]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20206.51 MB (82.220 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[6]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21042.51 MB (85.622 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[7]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19396.51 MB (78.925 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[8]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19044.51 MB (77.492 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[9]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18002.51 MB (73.252 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[31.0s] Avg prompt throughput: 15672.0 tokens/s, Avg generation throughput: 1344.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18606.51 MB (75.710 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19234.51 MB (78.265 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[2]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19436.51 MB (79.087 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20916.51 MB (85.109 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24550.51 MB (99.896 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 84000)
+         ├─Running Instance[5]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20218.51 MB (82.269 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21060.51 MB (85.695 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[7]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19408.51 MB (78.973 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[8]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20038.51 MB (81.537 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[9]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18488.51 MB (75.230 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[32.0s] Avg prompt throughput: 16076.0 tokens/s, Avg generation throughput: 1145.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18612.51 MB (75.734 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 5 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19992.51 MB (81.350 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[2]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19444.51 MB (79.120 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20940.51 MB (85.207 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24232.51 MB (98.602 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 90000)
+         ├─Running Instance[5]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20232.51 MB (82.326 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21818.51 MB (88.780 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 48000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19418.51 MB (79.014 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[8]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20062.51 MB (81.635 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[9]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18500.51 MB (75.279 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[33.0s] Avg prompt throughput: 1924.0 tokens/s, Avg generation throughput: 1478.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18620.51 MB (75.767 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20018.51 MB (81.456 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[2]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19452.51 MB (79.152 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20964.51 MB (85.305 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24512.51 MB (99.742 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 90000)
+         ├─Running Instance[5]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20246.51 MB (82.383 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21842.51 MB (88.877 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 48000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19426.51 MB (79.047 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[8]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20086.51 MB (81.732 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[9]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18512.51 MB (75.328 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[34.0s] Avg prompt throughput: 2044.0 tokens/s, Avg generation throughput: 1470.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18626.51 MB (75.791 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20042.51 MB (81.553 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[2]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19458.51 MB (79.177 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20988.51 MB (85.402 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24560.51 MB (99.937 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 90000)
+         ├─Running Instance[5]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20258.51 MB (82.432 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21866.51 MB (88.975 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 48000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19434.51 MB (79.079 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[8]: 5 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20356.51 MB (82.831 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[9]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18526.51 MB (75.385 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[35.0s] Avg prompt throughput: 3956.0 tokens/s, Avg generation throughput: 1408.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18634.51 MB (75.824 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20066.51 MB (81.651 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[2]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19460.51 MB (79.185 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21012.51 MB (85.500 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24352.51 MB (99.091 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 90000)
+         ├─Running Instance[5]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20268.51 MB (82.473 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[6]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21888.51 MB (89.065 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 48000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19440.51 MB (79.104 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[8]: 5 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20870.51 MB (84.922 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[9]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18540.51 MB (75.442 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[36.0s] Avg prompt throughput: 16088.0 tokens/s, Avg generation throughput: 1039.0 tokens/s
+         ├─Running Instance[0]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18638.51 MB (75.840 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 5 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20586.51 MB (83.767 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[2]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19460.51 MB (79.185 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 5 reqs, Waiting: 1 reqs, Total # 1 NPUs, Each NPU Memory Usage 21036.51 MB (85.598 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24400.51 MB (99.286 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 90000)
+         ├─Running Instance[5]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20276.51 MB (82.505 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[6]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21906.51 MB (89.138 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 48000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19448.51 MB (79.136 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[8]: 7 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21626.51 MB (87.998 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 48000)
+         ├─Running Instance[9]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19294.51 MB (78.510 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[37.0s] Avg prompt throughput: 22087.0 tokens/s, Avg generation throughput: 898.0 tokens/s
+         ├─Running Instance[0]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18638.51 MB (75.840 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 5 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20850.51 MB (84.841 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[2]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19460.51 MB (79.185 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 6 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 22056.51 MB (89.748 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 54000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24322.51 MB (98.969 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 96000)
+         ├─Running Instance[5]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20282.51 MB (82.530 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[6]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21924.51 MB (89.211 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 48000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19454.51 MB (79.161 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[8]: 7 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 22394.51 MB (91.123 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 54000)
+         ├─Running Instance[9]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19312.51 MB (78.583 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[38.0s] Avg prompt throughput: 17866.0 tokens/s, Avg generation throughput: 1183.0 tokens/s
+         ├─Running Instance[0]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18638.51 MB (75.840 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 5 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20880.51 MB (84.963 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[2]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19460.51 MB (79.185 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 6 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 22554.51 MB (91.775 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 54000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24368.51 MB (99.156 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 96000)
+         ├─Running Instance[5]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20290.51 MB (82.562 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 22680.51 MB (92.287 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 54000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19462.51 MB (79.193 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[8]: 8 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 22668.51 MB (92.238 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 60000)
+         ├─Running Instance[9]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20068.51 MB (81.659 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[39.0s] Avg prompt throughput: 20165.0 tokens/s, Avg generation throughput: 1173.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 18638.51 MB (75.840 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 24000)
+         ├─Running Instance[1]: 6 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21400.51 MB (87.079 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 48000)
+         ├─Running Instance[2]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19460.51 MB (79.185 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[3]: 6 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 22588.51 MB (91.913 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 54000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24332.51 MB (99.009 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 102000)
+         ├─Running Instance[5]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21044.51 MB (85.630 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[6]: 5 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 22954.51 MB (93.402 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 60000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19468.51 MB (79.218 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[8]: 8 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 23192.51 MB (94.371 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 60000)
+         ├─Running Instance[9]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20092.51 MB (81.757 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[40.0s] Avg prompt throughput: 27956.0 tokens/s, Avg generation throughput: 1281.0 tokens/s
+         ├─Running Instance[0]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19390.51 MB (78.900 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[1]: 7 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 22162.51 MB (90.179 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 54000)
+         ├─Running Instance[2]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20210.51 MB (82.237 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[3]: 5 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 22618.51 MB (92.035 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 54000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24306.51 MB (98.903 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 108000)
+         ├─Running Instance[5]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21056.51 MB (85.679 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Running Instance[6]: 5 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 23464.51 MB (95.477 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 60000)
+         ├─Running Instance[7]: 0 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19474.51 MB (79.242 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[8]: 8 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 23236.51 MB (94.550 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 60000)
+         ├─Running Instance[9]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20116.51 MB (81.854 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[41.0s] Avg prompt throughput: 31926.0 tokens/s, Avg generation throughput: 1212.0 tokens/s
+         ├─Running Instance[0]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 19396.51 MB (78.925 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 30000)
+         ├─Running Instance[1]: 7 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 22434.51 MB (91.286 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 54000)
+         ├─Running Instance[2]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20216.51 MB (82.261 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[3]: 5 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 22644.51 MB (92.141 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 54000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24386.51 MB (99.229 % Used), Prefix Cache Hit ratio 0.42 %, (480 / 114000)
+         ├─Running Instance[5]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21812.51 MB (88.755 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 48000)
+         ├─Running Instance[6]: 6 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24224.51 MB (98.570 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 66000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20224.51 MB (82.294 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[8]: 8 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 23272.51 MB (94.696 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 60000)
+         ├─Running Instance[9]: 6 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20634.51 MB (83.962 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 42000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+[42.0s] Avg prompt throughput: 15952.0 tokens/s, Avg generation throughput: 1724.0 tokens/s
+         ├─Running Instance[0]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20152.51 MB (82.001 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[1]: 7 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 22470.51 MB (91.433 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 54000)
+         ├─Running Instance[2]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20224.51 MB (82.294 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[3]: 3 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 22670.51 MB (92.247 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 54000)
+         ├─Running Instance[4]: 11 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24432.51 MB (99.416 % Used), Prefix Cache Hit ratio 0.42 %, (480 / 114000)
+         ├─Running Instance[5]: 2 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21828.51 MB (88.820 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 48000)
+         ├─Running Instance[6]: 4 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 24252.51 MB (98.684 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 66000)
+         ├─Running Instance[7]: 1 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 20232.51 MB (82.326 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 36000)
+         ├─Running Instance[8]: 9 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 23554.51 MB (95.844 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 66000)
+         ├─Running Instance[9]: 6 reqs, Waiting: 0 reqs, Total # 1 NPUs, Each NPU Memory Usage 21632.51 MB (88.023 % Used), Prefix Cache Hit ratio 0.00 %, (0 / 48000)
+         ├─Node[0]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[1]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[2]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[3]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[4]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[5]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[6]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[7]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         ├─Node[8]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 
+         └─Node[9]: Total CPU Memory Usage 0.00 MB, 0.000 % Used 

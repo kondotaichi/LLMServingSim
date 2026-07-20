@@ -65,6 +65,38 @@ class Scheduler:
                 load_size += self.memory.get_evict_kv(req)
         return load_size
 
+    def _capture_first_schedule_state(self, req, current, batch_req, scheduled_tokens):
+        if req.first_schedule_time_ns != -1:
+            return
+        eligible = [candidate for candidate in self.request if candidate.arrival <= current]
+        tokens_ahead = 0
+        for candidate in eligible:
+            if candidate.id == req.id:
+                break
+            if candidate.is_prefill():
+                tokens_ahead += max(0, candidate.original_input - candidate.num_computed_tokens)
+        req.scheduler_waiting_reqs_at_first_schedule = len(eligible)
+        req.scheduler_running_reqs_at_first_schedule = sum(
+            len(batch.requests) for batch in self.inflight
+        )
+        req.scheduler_running_decode_reqs_at_first_schedule = sum(
+            1 for batch in self.inflight for candidate in batch.requests
+            if not candidate.is_prefill()
+        )
+        scheduled_prefill = sum(
+            scheduled_tokens.get(candidate.id, 0)
+            for candidate in batch_req if candidate.is_prefill()
+        )
+        scheduled_decode = sum(
+            scheduled_tokens.get(candidate.id, 0)
+            for candidate in batch_req if not candidate.is_prefill()
+        )
+        req.scheduler_token_budget_at_first_schedule = self.max_num_batched_tokens
+        req.scheduler_scheduled_prefill_tokens = scheduled_prefill
+        req.scheduler_scheduled_decode_tokens = scheduled_decode
+        req.scheduler_batch_num_seqs = len(batch_req)
+        req.scheduler_prefill_tokens_ahead = tokens_ahead
+
     # batch the request scheduling method
     def schedule_base(self, current, sys, batch_id=-1):
         # first NPU to process new batch
@@ -233,6 +265,8 @@ class Scheduler:
             load_size = self._get_reload_size(batch_req, batch_len)
 
             # delete from request queue
+            for req in batch_req:
+                self._capture_first_schedule_state(req, current, batch_req, scheduled_tokens)
             for req in batch_req:
                 for i, req_ in enumerate(self.request):
                     if req_.id == req.id:
@@ -538,6 +572,7 @@ class Scheduler:
             prefix_load_size = 0
             
             for req in batch_req:
+                self._capture_first_schedule_state(req, current, batch_req, scheduled_tokens)
                 # Remove from request queue
                 for i, req_ in enumerate(self.request):
                     if req_.id == req.id:
@@ -842,6 +877,42 @@ class Scheduler:
     # add a request
     def add_request(self, req, is_init=True, geo=None, failover=None):
         new_req = Request(*(req), is_init=is_init, geo=geo, failover=failover)
+        new_req.scheduler_admission_time_ns = new_req.arrival
+        new_req.scheduler_waiting_reqs_at_admission = len(self.request)
+        new_req.scheduler_running_reqs_at_admission = sum(
+            len(batch.requests) for batch in self.inflight
+        )
+        new_req.scheduler_running_decode_reqs_at_admission = sum(
+            1 for batch in self.inflight for candidate in batch.requests
+            if not candidate.is_prefill()
+        )
+        new_req.scheduler_token_budget_at_admission = self.max_num_batched_tokens
+
+        inflight_prefill_tokens = 0
+        inflight_decode_tokens = 0
+        for batch in self.inflight:
+            scheduled_tokens = batch.scheduled_tokens or {}
+            for candidate in batch.requests:
+                tokens = scheduled_tokens.get(candidate.id, candidate.chunk_len)
+                if candidate.is_prefill():
+                    inflight_prefill_tokens += max(0, int(tokens))
+                else:
+                    inflight_decode_tokens += max(1, int(tokens))
+        new_req.scheduler_inflight_prefill_tokens_at_admission = inflight_prefill_tokens
+        new_req.scheduler_inflight_decode_tokens_at_admission = inflight_decode_tokens
+        new_req.scheduler_available_token_budget_at_admission = max(
+            0,
+            self.max_num_batched_tokens
+            - inflight_prefill_tokens
+            - inflight_decode_tokens,
+        )
+
+        new_key = (new_req.arrival, new_req.id)
+        new_req.scheduler_prefill_tokens_ahead_at_admission = sum(
+            max(0, candidate.original_input - candidate.num_computed_tokens)
+            for candidate in self.request
+            if (candidate.arrival, candidate.id) <= new_key and candidate.is_prefill()
+        )
         # Maintain arrival-time sort order (required by schedule_base/schedule_with_prefix)
         bisect.insort(self.request, new_req, key=lambda r: (r.arrival, r.id))
         return
@@ -993,6 +1064,64 @@ class Scheduler:
                                 'capacity_required_kv_bytes', 'capacity_free_npu_bytes',
                                 'capacity_projected_active_kv_bytes',
                                 'capacity_kv_budget_bytes', 'capacity_available_kv_bytes',
+                                'router_capacity_wait_start_ns', 'router_decision_time_ns',
+                                'router_capacity_wait_ns', 'router_candidate_gpu_count',
+                                'router_capacity_retry_count',
+                                'router_initial_instance_id',
+                                'router_initial_waiting_reqs', 'router_initial_running_reqs',
+                                'router_initial_max_num_seqs',
+                                'router_initial_required_kv_bytes', 'router_initial_free_npu_bytes',
+                                'router_initial_projected_active_kv_bytes',
+                                'router_initial_kv_budget_bytes', 'router_initial_available_kv_bytes',
+                                'router_initial_capacity_pressure', 'router_initial_slot_pressure',
+                                'router_initial_admissible', 'router_initial_candidate_count',
+                                'router_initial_admissible_candidate_count',
+                                'router_initial_total_waiting_reqs',
+                                'router_initial_max_waiting_reqs',
+                                'router_initial_total_running_reqs',
+                                'router_initial_max_running_reqs',
+                                'router_initial_min_available_kv_bytes',
+                                'router_initial_max_available_kv_bytes',
+                                'router_initial_min_capacity_pressure',
+                                'router_initial_max_capacity_pressure',
+                                'router_initial_target_instance_id',
+                                'router_initial_target_waiting_reqs',
+                                'router_initial_target_running_reqs',
+                                'router_initial_target_max_num_seqs',
+                                'router_initial_target_required_kv_bytes',
+                                'router_initial_target_free_npu_bytes',
+                                'router_initial_target_projected_active_kv_bytes',
+                                'router_initial_target_kv_budget_bytes',
+                                'router_initial_target_available_kv_bytes',
+                                'router_initial_target_capacity_pressure',
+                                'router_initial_target_slot_pressure',
+                                'router_initial_target_admissible',
+                                'router_decision_instance_id',
+                                'router_decision_waiting_reqs', 'router_decision_running_reqs',
+                                'router_decision_max_num_seqs',
+                                'router_decision_required_kv_bytes', 'router_decision_free_npu_bytes',
+                                'router_decision_projected_active_kv_bytes',
+                                'router_decision_kv_budget_bytes', 'router_decision_available_kv_bytes',
+                                'router_decision_capacity_pressure', 'router_decision_slot_pressure',
+                                'router_decision_admissible',
+                                'router_first_block_reason', 'router_first_block_instance_id',
+                                'scheduler_admission_time_ns',
+                                'scheduler_waiting_reqs_at_admission',
+                                'scheduler_running_reqs_at_admission',
+                                'scheduler_running_decode_reqs_at_admission',
+                                'scheduler_token_budget_at_admission',
+                                'scheduler_inflight_prefill_tokens_at_admission',
+                                'scheduler_inflight_decode_tokens_at_admission',
+                                'scheduler_available_token_budget_at_admission',
+                                'scheduler_prefill_tokens_ahead_at_admission',
+                                'scheduler_waiting_reqs_at_first_schedule',
+                                'scheduler_running_reqs_at_first_schedule',
+                                'scheduler_running_decode_reqs_at_first_schedule',
+                                'scheduler_token_budget_at_first_schedule',
+                                'scheduler_scheduled_prefill_tokens',
+                                'scheduler_scheduled_decode_tokens',
+                                'scheduler_batch_num_seqs',
+                                'scheduler_prefill_tokens_ahead',
                                 # <<< SPEC: redirect-on-capacity routing
                                 # --- KV-cache failover / migration (separate, pre-existing feature) ---
                                 'failover_mode', 'failed_instance_id', 'failover_target_instance_id',
@@ -1067,6 +1196,76 @@ class Scheduler:
                     req.capacity_projected_active_kv_bytes,
                     req.capacity_kv_budget_bytes,
                     req.capacity_available_kv_bytes,
+                    req.router_capacity_wait_start_ns,
+                    req.router_decision_time_ns,
+                    req.router_capacity_wait_ns,
+                    req.router_candidate_gpu_count,
+                    req.router_capacity_retry_count,
+                    req.router_initial_instance_id,
+                    req.router_initial_waiting_reqs,
+                    req.router_initial_running_reqs,
+                    req.router_initial_max_num_seqs,
+                    req.router_initial_required_kv_bytes,
+                    req.router_initial_free_npu_bytes,
+                    req.router_initial_projected_active_kv_bytes,
+                    req.router_initial_kv_budget_bytes,
+                    req.router_initial_available_kv_bytes,
+                    req.router_initial_capacity_pressure,
+                    req.router_initial_slot_pressure,
+                    req.router_initial_admissible,
+                    req.router_initial_candidate_count,
+                    req.router_initial_admissible_candidate_count,
+                    req.router_initial_total_waiting_reqs,
+                    req.router_initial_max_waiting_reqs,
+                    req.router_initial_total_running_reqs,
+                    req.router_initial_max_running_reqs,
+                    req.router_initial_min_available_kv_bytes,
+                    req.router_initial_max_available_kv_bytes,
+                    req.router_initial_min_capacity_pressure,
+                    req.router_initial_max_capacity_pressure,
+                    req.router_initial_target_instance_id,
+                    req.router_initial_target_waiting_reqs,
+                    req.router_initial_target_running_reqs,
+                    req.router_initial_target_max_num_seqs,
+                    req.router_initial_target_required_kv_bytes,
+                    req.router_initial_target_free_npu_bytes,
+                    req.router_initial_target_projected_active_kv_bytes,
+                    req.router_initial_target_kv_budget_bytes,
+                    req.router_initial_target_available_kv_bytes,
+                    req.router_initial_target_capacity_pressure,
+                    req.router_initial_target_slot_pressure,
+                    req.router_initial_target_admissible,
+                    req.router_decision_instance_id,
+                    req.router_decision_waiting_reqs,
+                    req.router_decision_running_reqs,
+                    req.router_decision_max_num_seqs,
+                    req.router_decision_required_kv_bytes,
+                    req.router_decision_free_npu_bytes,
+                    req.router_decision_projected_active_kv_bytes,
+                    req.router_decision_kv_budget_bytes,
+                    req.router_decision_available_kv_bytes,
+                    req.router_decision_capacity_pressure,
+                    req.router_decision_slot_pressure,
+                    req.router_decision_admissible,
+                    req.router_first_block_reason,
+                    req.router_first_block_instance_id,
+                    req.scheduler_admission_time_ns,
+                    req.scheduler_waiting_reqs_at_admission,
+                    req.scheduler_running_reqs_at_admission,
+                    req.scheduler_running_decode_reqs_at_admission,
+                    req.scheduler_token_budget_at_admission,
+                    req.scheduler_inflight_prefill_tokens_at_admission,
+                    req.scheduler_inflight_decode_tokens_at_admission,
+                    req.scheduler_available_token_budget_at_admission,
+                    req.scheduler_prefill_tokens_ahead_at_admission,
+                    req.scheduler_waiting_reqs_at_first_schedule,
+                    req.scheduler_running_reqs_at_first_schedule,
+                    req.scheduler_running_decode_reqs_at_first_schedule,
+                    req.scheduler_token_budget_at_first_schedule,
+                    req.scheduler_scheduled_prefill_tokens,
+                    req.scheduler_scheduled_decode_tokens,
+                    req.scheduler_batch_num_seqs,
+                    req.scheduler_prefill_tokens_ahead,
                     # <<< SPEC: redirect-on-capacity routing
                     req.failover_mode,
                     req.failed_instance_id,
