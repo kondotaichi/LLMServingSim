@@ -32,7 +32,7 @@ RANDOM_STATE = 20260720
 
 NUMERIC_FEATURES = [
     "input_tokens",
-    "target_total_tokens",
+    "output_tokens",
     "home_cached_prefix_tokens",
     "request_rate_rps",
     "arrival_offset_s",
@@ -67,7 +67,7 @@ COMPUTE_FEATURES = ["input_tokens", "home_cached_prefix_tokens"]
 def prepare_dataset():
     dataset = pd.read_csv(DATASET_PATH)
     dataset = dataset[dataset.has_router_state == 1].copy()
-    dataset["target_total_tokens"] = dataset.output_tokens_actual
+    dataset["output_tokens"] = dataset.output_tokens_actual
     # Proxy for prefix bytes known on the home GPU at request send time. The
     # current CSV only retains policy-dependent realized reuse, so the analysis
     # reconstructs the common pre-route value as the per-request policy maximum.

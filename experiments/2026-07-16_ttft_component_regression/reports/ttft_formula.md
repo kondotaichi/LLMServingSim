@@ -1,5 +1,8 @@
 # Request送信時情報によるTTFT定式化
 
+Raw入力から最終TTFTまでを1 requestについて全項展開した独立資料は
+`ttft_formula_worked_example.md`を参照する。
+
 ## 最終式
 
 Request送信時に既知のrequest/context、home GPU cache情報、initial GPU telemetryから
@@ -285,8 +288,16 @@ router_initial_admissible_candidate_count = 9
 Queue発生logitは、
 
 $$
-L=-14.0132-0.3929+0.3504-0.3405+0.3224+0.3224+0.6807
-=-13.0707
+\begin{aligned}
+L={}&-14.0132 &&\text{intercept}\\
+&-0.3929 &&\text{required KV}\\
+&+0.3504 &&\text{maximum candidate capacity pressure}\\
+&-0.3405 &&\text{admissible candidate count}\\
+&+0.3224 &&\text{home running requests}\\
+&+0.3224 &&\text{home slot pressure}\\
+&+0.6807 &&\text{all other input terms}\\
+={}&-13.0707
+\end{aligned}
 $$
 
 最後の$+0.6807$は上に個別表示しなかった残り全項の和である。
@@ -465,6 +476,184 @@ $$
 - `examples/scheduler_contributions.csv`: 全scheduler項の`z × coefficient`
 
 これらを再生成するスクリプトは`trace_ttft_formula_examples.py`である。
+
+## 支配要因の考察
+
+### 何を「支配的」と呼ぶか
+
+支配要因は、係数の絶対値だけでは決められない。本分析では次の3つを分けて解釈する。
+
+1. **component支配度**：実測TTFTのうち、`t_route`、`t_sched`、`t_compute`のどれが最大か
+2. **同一モデル内の感度**：標準化線形モデルの「入力が1標準偏差変化したときの寄与」、またはtree importance
+3. **機構上の整合性**：その入力がrouter、scheduler、prefill計算を変化させる理由がシミュレータの定義と一致するか
+
+相関する特徴量を同時に入れているため、単一係数を因果効果とはみなさない。例えば、固定KV budgetでは
+`available_kv_bytes`と`projected_active_kv_bytes`はほぼ表裏一体であり、
+`running_reqs`と`slot_pressure`もほぼ同じ状態を表す。以下では、これらを個別の変数ではなく
+**GPU収容余力**という特徴量群として扱う。
+
+### 結論：典型リクエストはcompute、平均と上位tailはrouteが支配する
+
+6,000件の実測で、各リクエストについて最大のcomponentを調べると、
+
+| 最大component | リクエスト比率 |
+|---|---:|
+| `t_compute` | 86.48% |
+| `t_route` | 13.02% |
+| `t_sched` | 0.50% |
+
+となる。したがって、**大部分の通常リクエストではprefill computeがTTFTを決める**。
+一方、実測平均は`route = 1224.39 ms`、`scheduler = 60.25 ms`、
+`compute = 703.60 ms`であり、平均TTFTに対する比率はそれぞれ約61.5%、3.0%、35.3%である。
+これは少数のroute queueが非常に長いzero-inflated long-tailであり、平均を強く押し上げるためである。
+
+入力長別にも同じ構造が見える。
+
+| `input_tokens` | route (ms) | scheduler (ms) | compute (ms) | 実測TTFT (ms) | 主成分 |
+|---:|---:|---:|---:|---:|---|
+| 4000 | 0.0 | 30.9 | 472.9 | 503.8 | compute（約93.9%） |
+| 6000 | 1603.9 | 70.4 | 706.2 | 2381.9 | route（約67.3%） |
+| 8000 | 1140.9 | 56.4 | 814.2 | 2018.4 | route（約56.5%） |
+
+6,000 tokenの平均が8,000 tokenより遅いことは、入力長を増やすとroute queueが短くなることを意味しない。
+rate、policy、prefix reuse、到着時刻などのscenario構成が異なる集計値であるためで、入力長単独の因果比較には使えない。
+
+### 1. `t_compute`の支配要因：入力token数とcached prefix
+
+compute式は
+
+$$
+\hat t_{compute}=
+\max\left(0,
+-96.717513
++0.144021508\,\text{input\_tokens}
+-0.119011686\,\text{home\_cached\_prefix\_tokens}
+\right)
+$$
+
+である。したがって、他の入力を固定したモデル上の感度は、
+
+- `input_tokens`が1 token増えると`+0.1440 ms`
+- home GPU上のcached prefixが1 token増えると`-0.1190 ms`
+
+である。入力tokenが増えるとprefillで処理するembedding、attention、MLP等の仕事量が増えるため、
+compute時間がほぼ線形に増える。一方、既にhome GPUにあるprefixは再計算を省略できるため、
+`home_cached_prefix_tokens`は負の寄与になる。両係数の絶対値が完全には一致しないのは、
+cache hitがattentionのKV長やbatch構成にも影響し、単純な「入力tokenからcache tokenを引く」だけでは
+全kernel時間を表現できないためである。
+
+通常領域でこの2変数が最重要なのは、queueが発生しない86%超のリクエストでは、
+TTFTの大部分が実際にprefillの計算量だからである。
+
+### 2. route queue発生の支配要因：GPU収容余力
+
+queue発生classifierで絶対値の大きい標準化係数は次の通りである。
+
+| 入力 | 標準化係数 | 解釈 |
+|---|---:|---|
+| `router_initial_capacity_pressure` | +2.426 | 必要KVを含む占有圧力が高いほどqueueしやすい |
+| `router_initial_projected_active_kv_bytes` | +2.397 | 既存requestの予測KV占有が大きいほどqueueしやすい |
+| `router_initial_available_kv_bytes` | -2.397 | 空きKVが大きいほどqueueしにくい |
+| `router_initial_running_reqs` | +1.743 | 実行中requestが多いほどslot不足になりやすい |
+| `router_initial_slot_pressure` | +1.743 | request slot圧力が高いほどqueueしやすい |
+| `input_tokens` | +1.200 | 新規requestが要求するKV容量が増える |
+| `router_initial_admissible_candidate_count` | -1.194 | 収容可能GPUが多いほど待たずにrouteできる |
+| `router_initial_required_kv_bytes` | +1.192 | 当該requestの必要KVが大きいほど収容条件が厳しい |
+
+これらは独立な8要因ではなく、中心にあるのは次の収容判定である。
+
+$$
+\text{capacity pressure}
+=\frac{\text{projected active KV}+\text{required KV}}{\text{KV budget}}
+$$
+
+$$
+\text{admissible}
+\iff
+\text{required KV}\leq\text{available KV}
+\quad\land\quad
+\text{running requests}<\text{max sequences}
+$$
+
+つまり、**route queueの発生を最も強く決める潜在要因は、送信時点で少なくとも1台のGPUが
+そのrequestをKV容量とsequence slotの両方で収容できるか**である。
+長いpromptは必要KVを増やし、既存requestのKV占有と実行数は空き容量を減らす。
+その結果、`admissible_candidate_count = 0`に近づくほどqueue確率が急増する。
+
+個々の係数を足して「available KVとprojected KVが別々に約2.4ずつ効く」と解釈してはいけない。
+両者は固定budgetを介して強く相関するため、係数の分配は学習データや正則化で変動し得る。
+ただし、符号が収容判定と一致し、除外重要度でも同じ特徴量群が上位であることから、
+**GPU収容余力というグループの重要性**は信頼できる。
+
+### 3. 正値route時間の支配要因：逃げ道、policy、混雑の持続時間
+
+queueが発生した後の正値時間を推定する100本のdepth-2 treesでは、主なimpurity importanceは次の通りである。
+
+| 入力 | tree importance |
+|---|---:|
+| `router_initial_admissible_candidate_count` | 0.241 |
+| `policy_NEAREST_KV` | 0.167 |
+| `home_workload_share` | 0.150 |
+| `router_initial_min_capacity_pressure` | 0.091 |
+| `arrival_offset_s` | 0.090 |
+| `home_arrivals_5s` | 0.050 |
+| `router_initial_available_kv_bytes` | 0.038 |
+| `request_rate_rps` | 0.035 |
+| `router_initial_total_running_reqs` | 0.032 |
+
+queue発生後に重要なのは、単なるrequestサイズよりも、**いつ収容可能なGPUが現れるか**である。
+
+- `admissible_candidate_count`は、直ちに使える逃げ道の数を表す。0台なら既存処理の完了を待つ必要がある。
+- `policy_NEAREST_KV`はprefix localityを優先するため、home GPUが満杯でも別GPUへ逃がすpolicyより待ちやすい。
+- `home_workload_share`、`home_arrivals_5s`、`request_rate_rps`は、home側の混雑が一時的か継続的かを表す。
+- `min_capacity_pressure`とavailable KVは、候補中で最も余裕のあるGPUがどの程度回復に近いかを表す。
+
+`arrival_offset_s`のimportanceは注意が必要である。これは時刻そのものがqueueを生むというより、
+runの前半・後半におけるwarm-up、混雑の蓄積、drainを代理している可能性が高い。
+したがって、同じ到着過程を持つ実験内では予測に役立つが、run長やtraffic patternが変わる環境への
+移植性は低い。tree importance自体も相関特徴量や分割点数の影響を受けるため、値を因果効果とは解釈しない。
+
+なお、送信後に確定する`capacity_retry_count`や`rerouted`を許せば正値tailは大幅に説明しやすくなる。
+しかし本式は「request送信時点で予測可能」という条件を守るため、それらを入力していない。
+この制約がroute tailの予測誤差が大きく残る主要因である。
+
+### 4. `t_sched`の支配要因：既存waiting queueと直近の到着burst
+
+Scheduler Ridgeで大きい標準化係数は、`router_initial_waiting_reqs = +52.73 ms/SD`と
+`home_arrivals_1s = +50.73 ms/SD`である。既に待っているrequestが多いほど先行requestの処理を待ち、
+直近1秒の到着が多いほどtoken budget、sequence slot、KV blockの競合が増えるため、これはschedulerの機構と一致する。
+
+次点は`home_cached_prefix_tokens = -17.52 ms/SD`である。prefix cache hitにより必要なprefill tokenが減り、
+先行batchと当該requestの双方がschedulerを早く通過しやすくなるため、負の寄与は妥当である。
+ただし到着数、waiting数、rateは相互に強く相関するので、ここでも個々の係数より
+**既存backlogと短時間burst**というグループとして解釈する。
+
+`t_sched`は重要な機構ではあるが、今回のデータでは最大componentになったrequestは0.5%、
+平均寄与も約3%であり、TTFT全体の第一支配要因ではない。
+
+### 5. 支配要因の総合順位
+
+| 順位 | 支配要因群 | 主に効くcomponent | 根拠と解釈 | 信頼度 |
+|---:|---|---|---|---|
+| 1 | GPU収容余力（KV capacity、slot、admissible GPU数） | route発生、route tail | classifier係数・tree importance・router収容式が一致 | 高 |
+| 2 | 入力token数とcached prefix | compute、route発生 | compute式の直接係数とKV要求量の両方に作用 | 高 |
+| 3 | 既存backlogと直近arrival burst | scheduler、route tail | waiting数・1秒/5秒到着数が上位 | 中〜高 |
+| 4 | routing policyとhome locality/load | route tail | 混雑時に別GPUへ逃げられるかを決定 | 中 |
+| 5 | run内の到着位置 `arrival_offset_s` | route tail | 非定常な混雑状態のproxyであり、移植性が低い | 低〜中 |
+
+まとめると、低負荷・通常時のTTFTを短くするには、uncached input tokenを減らすprefix cacheが最も直接的である。
+高負荷時の平均・p95/p99を短くするには、KV/slot収容余力を増やすこと、候補GPUを増やすこと、
+混雑したhome GPUから逃がせるrouting policyにすることの方が重要になる。
+
+### モデル精度から見た考察の限界
+
+OOF予測のcomponent平均は、`scheduler = 56.71 ms`対実測`60.25 ms`、
+`compute = 706.87 ms`対実測`703.60 ms`で、平均値はよく整合する。
+一方、routeは予測`509.76 ms`に対して実測`1224.39 ms`であり、長いtailを過小予測している。
+したがって本式は、通常領域のcompute時間とqueue発生riskの説明には比較的信頼性があるが、
+**極端なroute待ち時間の絶対値**には十分な信頼性がない。
+支配要因の結論も「容量不足がtailを生む」点は強いが、「何ms待つか」の細かな順位は今後、
+送信時点のGPUごとのremaining work、実行中batchの残りtoken、次の解放見込み時刻などを追加して再検証すべきである。
 
 ## 再現・予測
 

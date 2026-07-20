@@ -13,7 +13,7 @@ leave-one-scenario-outで評価した。
 request送信時に既知の次の11列を使用した。
 
 - `input_tokens`
-- `output_tokens_actual`（本simulator workloadで事前指定されたtotal target length）
+- `output_tokens_actual`（本simulator workloadで事前指定された生成output token数）
 - `request_rate_rps`
 - `arrival_offset_s`
 - `interarrival_ms`

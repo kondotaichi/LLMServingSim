@@ -114,7 +114,7 @@ def main():
     model = joblib.load(MODEL)
     dataset = pd.read_csv(DATASET)
     dataset = dataset[dataset.has_router_state == 1].copy()
-    dataset["target_total_tokens"] = dataset.output_tokens_actual
+    dataset["output_tokens"] = dataset.output_tokens_actual
     dataset["home_cached_prefix_tokens"] = dataset.nominal_reuse_tokens
     examples = select_examples(dataset)
     transformed = model["preprocessor"].transform(examples[model["features"]])
