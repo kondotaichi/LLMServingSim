@@ -425,6 +425,55 @@ def plot_component_shares(shares):
     plt.close(fig)
 
 
+def plot_importance_intervals(bootstrap):
+    targets = ["router_queue_ms", "scheduler_queue_ms", "compute_prefill_ms"]
+    fig, axes = plt.subplots(1, len(targets), figsize=(16, 7), sharex=False)
+    for axis, target in zip(axes, targets):
+        frame = bootstrap[
+            (bootstrap.feature_set == "state") & (bootstrap.target == target)
+        ].sort_values("mean_mae_increase_ms").tail(8)
+        means = frame.mean_mae_increase_ms.to_numpy()
+        lower = means - frame.ci95_low_ms.to_numpy()
+        upper = frame.ci95_high_ms.to_numpy() - means
+        colors = np.where(frame.ci95_low_ms > 0, "#26734d", "#9b9b9b")
+        axis.barh(frame.group, means, color=colors, alpha=0.9)
+        axis.errorbar(means, range(len(frame)), xerr=[lower, upper], fmt="none",
+                      ecolor="#202020", capsize=3, linewidth=1)
+        axis.axvline(0, color="#202020", linewidth=0.8)
+        axis.set_title(target.replace("_ms", ""))
+        axis.set_xlabel("Held-out MAE increase (ms)\n95% scenario-bootstrap CI")
+        axis.grid(axis="x", color="#ded8ce")
+        axis.set_axisbelow(True)
+    fig.suptitle("Input-group importance with newly logged router/scheduler state", fontsize=14)
+    fig.tight_layout()
+    fig.savefig(FIGURE_DIR / "state_importance_with_ci.png", dpi=180,
+                bbox_inches="tight", facecolor="#faf8f4")
+    plt.close(fig)
+
+
+def plot_component_regimes(dataset):
+    components = [
+        "router_queue_ms", "scheduler_queue_ms", "kv_transfer_ms",
+        "compute_prefill_ms",
+    ]
+    aggregate = dataset.groupby("input_tokens")[components].mean().sort_index()
+    fig, axis = plt.subplots(figsize=(10, 6))
+    colors = ["#c84f3d", "#e89c32", "#8456d8", "#358a73"]
+    for component, color in zip(components, colors):
+        axis.plot(aggregate.index, aggregate[component], marker="o", linewidth=2.2,
+                  label=component.replace("_ms", ""), color=color)
+    axis.set_yscale("symlog", linthresh=10)
+    axis.set_xlabel("Input tokens")
+    axis.set_ylabel("Mean component latency (ms, symlog scale)")
+    axis.set_title("TTFT bottleneck changes with input length")
+    axis.grid(color="#ded8ce")
+    axis.legend()
+    fig.tight_layout()
+    fig.savefig(FIGURE_DIR / "component_regime_by_input.png", dpi=180,
+                bbox_inches="tight", facecolor="#faf8f4")
+    plt.close(fig)
+
+
 def main():
     ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
@@ -462,6 +511,8 @@ def main():
     pd.DataFrame(metrics).to_csv(ANALYSIS_DIR / "model_metrics.csv", index=False)
     plot_importance(bootstrap)
     plot_component_shares(shares)
+    plot_importance_intervals(bootstrap)
+    plot_component_regimes(dataset)
     summary = {
         "runs": len(inventory),
         "requests": len(dataset),
