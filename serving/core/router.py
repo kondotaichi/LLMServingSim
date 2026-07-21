@@ -8,6 +8,18 @@ DEFAULT_KV_MIGRATION_BANDWIDTH_GBPS = 100.0
 DEFAULT_KV_MIGRATION_DISTANCE_M = 10_000.0
 DEFAULT_DISTANCE_LATENCY_NS_PER_M = 5.0
 
+MULTI_CANDIDATE_SELECTORS = {
+    'NEAREST_CAPACITY_MULTI_FORMULA_KV_RESERVE': 'formula',
+    'NEAREST_CAPACITY_MULTI_WAITING_FORMULA_KV_RESERVE': 'min_waiting',
+    'NEAREST_CAPACITY_MULTI_PRESSURE_FORMULA_KV_RESERVE': 'min_pressure',
+    'NEAREST_CAPACITY_MULTI_RANDOM_FORMULA_KV_RESERVE': 'random',
+    'NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE': 'min_pressure_no_model',
+}
+FORMULA_MULTI_CANDIDATE_POLICIES = tuple(
+    policy for policy, selector in MULTI_CANDIDATE_SELECTORS.items()
+    if selector != 'min_pressure_no_model'
+)
+
 
 # Geographic/communication fields written by
 # `python -m workloads.generators geographic` (Phase 1 spec section 20/22.3).
@@ -146,14 +158,25 @@ class Router:
             self._select_instance = self._nearest_select
         elif self.routing_policy == "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE":
             self._select_instance = self._nearest_select
+        elif self.routing_policy in (
+            "NEAREST_CAPACITY_DYNAMIC_FORMULA_KV_RESERVE",
+            *MULTI_CANDIDATE_SELECTORS,
+        ):
+            self._select_instance = self._nearest_select
         # <<< SPEC: redirect-on-capacity routing
         else:
             raise ValueError(f"Unknown routing_policy '{routing_policy}'. "
                              "Supported: RR, RAND, LOAD, PROMPT, QUEUE, HYBRID, CUSTOM, NEAREST, "
                              "NEAREST_KV, NEAREST_REJECT, NEAREST_MIGRATE, NEAREST_MIGRATE_KV, "
                              "NEAREST_SECOND_TTFT_RESERVE, NEAREST_CAPACITY_ONESHOT_KV_RESERVE, "
-                             "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE")
-        if self.routing_policy == "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE":
+                             "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE, "
+                             "NEAREST_CAPACITY_DYNAMIC_FORMULA_KV_RESERVE, "
+                             + ", ".join(MULTI_CANDIDATE_SELECTORS))
+        if self.routing_policy in (
+            "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE",
+            "NEAREST_CAPACITY_DYNAMIC_FORMULA_KV_RESERVE",
+            *FORMULA_MULTI_CANDIDATE_POLICIES,
+        ):
             from .ttft_formula import OfflineTtftFormula
             self.ttft_formula = OfflineTtftFormula(ttft_formula_artifact_dir)
         self.logger = get_logger(self.__class__)
@@ -1039,6 +1062,275 @@ class Router:
             req_data.pop('failover', None)
         return True
 
+    def _maybe_capacity_dynamic_formula_route(self, req_data, current_time_ns):
+        """Re-evaluate blocked formula routes until home or a target wins."""
+        geo = req_data.get('geo')
+        if geo is None or 'second_nearest_gpu_id' not in geo:
+            raise RuntimeError(
+                "Dynamic formula routing requires a geographic workload with "
+                "second-nearest-GPU fields"
+            )
+        if self.gpu_backbone_bandwidth_gbps is None:
+            raise RuntimeError(
+                "Dynamic formula routing requires --gpu-backbone-bandwidth-gbps"
+            )
+        candidate_selector = MULTI_CANDIDATE_SELECTORS.get(self.routing_policy)
+        multi_candidate = candidate_selector is not None
+        if multi_candidate and self.apn_fixed_propagation_ns is None:
+            raise RuntimeError(
+                "Multi-candidate formula routing requires --apn-fixed-propagation-ns "
+                "because the workload only records distance to the second-nearest GPU"
+            )
+        if self.gpu_backbone_distance_m is None and self.apn_fixed_propagation_ns is None:
+            raise RuntimeError(
+                "Dynamic formula routing requires --gpu-backbone-distance-m or "
+                "--apn-fixed-propagation-ns"
+            )
+
+        selected = req_data.get('_oneshot_selected_route')
+        if selected in ('cold_migrate', 'kv_handoff'):
+            return False
+
+        home_id = int(req_data.get(
+            '_oneshot_home_instance_id', req_data['assigned_instance_id']
+        ))
+        req_data['_oneshot_home_instance_id'] = home_id
+        home = self._find_scheduler(self.prefill_schedulers, home_id)
+        if home is None:
+            raise RuntimeError(
+                f"Dynamic formula home {home_id} does not match a prefill instance"
+            )
+
+        reevaluations = int(req_data.get('_oneshot_reevaluation_count', 0))
+        req_data['_oneshot_reevaluation_count'] = reevaluations + 1
+        geo['oneshot_reevaluation_count'] = reevaluations
+        if self._has_capacity(home, req_data):
+            reason = 'home_admissible' if reevaluations == 0 else 'home_became_admissible'
+            req_data['_oneshot_selected_route'] = 'local'
+            geo.update({
+                'oneshot_selected_route': 'local',
+                'oneshot_decision_reason': reason,
+                'oneshot_decision_time_ns': int(current_time_ns),
+            })
+            self._clear_capacity_failure(req_data)
+            return False
+
+        second_id = int(geo['second_nearest_gpu_id'])
+        if multi_candidate:
+            candidates = [
+                sched for sched in self.prefill_schedulers
+                if int(sched.instance_id) != home_id
+            ]
+            candidates.sort(key=lambda sched: (
+                int(sched.instance_id) != second_id, int(sched.instance_id)
+            ))
+        else:
+            target = self._find_scheduler(self.prefill_schedulers, second_id)
+            if target is None:
+                raise RuntimeError(
+                    f"Dynamic formula target {second_id} does not match a prefill instance"
+                )
+            candidates = [target]
+
+        admissible = [
+            sched for sched in candidates
+            if self._has_capacity(sched, req_data, record_failure=False)
+        ]
+        geo['oneshot_candidate_count'] = len(candidates)
+        geo['oneshot_admissible_candidate_count'] = len(admissible)
+        if not admissible:
+            geo.update({
+                'oneshot_selected_route': 'undecided',
+                'oneshot_decision_reason': 'awaiting_candidate_capacity',
+                'oneshot_target_admissible': 0,
+            })
+            largest = max(
+                candidates, key=lambda sched: int(sched.memory.mem_for_kv)
+            )
+            return self._defer_capacity_retry(
+                req_data, current_time_ns, home, largest
+            )
+
+        input_tokens = int(req_data['input_toks'])
+        reuse_tokens = min(
+            input_tokens, int(req_data.get('reuse_prefix_toks', 0))
+        )
+        target_prefill = input_tokens - reuse_tokens if reuse_tokens > 0 else input_tokens
+        request_migration = self._request_migration_cost_ns(geo)
+        downlink_distance_ns = round(
+            self.apn_fixed_propagation_ns
+            if self.apn_fixed_propagation_ns is not None
+            else float(geo['second_nearest_distance_m'])
+            * float(geo['distance_latency_ns_per_meter'])
+        )
+        downlink_serialization_ns = round(
+            8000.0 * float(geo['first_token_payload_bytes'])
+            / float(geo['network_throughput_mbps'])
+        )
+
+        no_model = candidate_selector == 'min_pressure_no_model'
+        if no_model:
+            local_prediction = None
+            local_wait = float('nan')
+            local_total = float('nan')
+        else:
+            local_prediction = self.ttft_formula.predict(
+                self._ttft_formula_features(req_data, home), 'NEAREST_KV'
+            )
+            local_wait = local_prediction['route_upper_ms'] * 1e6
+            local_total = (
+                local_prediction['ttft_ms']
+                - local_prediction['route_ms']
+                + local_prediction['route_upper_ms']
+            ) * 1e6 + float(geo.get('downlink_latency_ns', 0))
+
+        scored = []
+        for target in admissible:
+            snapshot = self._capacity_snapshot(target, req_data)
+            prediction = None if no_model else self.ttft_formula.predict(
+                self._ttft_formula_features(req_data, target),
+                'NEAREST_MIGRATE_KV',
+            )
+            kv_migration = (
+                self._kv_migration_cost_ns(target, req_data)
+                if reuse_tokens > 0 else 0
+            )
+            total = (
+                request_migration + kv_migration
+                + downlink_distance_ns + downlink_serialization_ns
+                if no_model else
+                prediction['ttft_ms'] * 1e6
+                + request_migration + kv_migration
+                + downlink_distance_ns + downlink_serialization_ns
+            )
+            scored.append({
+                'total': total,
+                'target_id': int(target.instance_id),
+                'target': target,
+                'prediction': prediction,
+                'kv_migration': kv_migration,
+                'snapshot': snapshot,
+            })
+        if candidate_selector == 'min_waiting':
+            selected_target = min(
+                scored,
+                key=lambda item: (
+                    item['snapshot']['waiting_reqs'], item['target_id']
+                ),
+            )
+        elif candidate_selector in ('min_pressure', 'min_pressure_no_model'):
+            selected_target = min(
+                scored,
+                key=lambda item: (
+                    item['snapshot']['capacity_pressure'], item['target_id']
+                ),
+            )
+        elif candidate_selector == 'random':
+            selected_target = self._rnd.choice(scored)
+        else:
+            selected_target = min(
+                scored, key=lambda item: (item['total'], item['target_id'])
+            )
+        redirect_total = selected_target['total']
+        target_id = selected_target['target_id']
+        target = selected_target['target']
+        redirect_prediction = selected_target['prediction']
+        kv_migration = selected_target['kv_migration']
+
+        wait_start = req_data.get('_router_capacity_wait_start_ns')
+        elapsed_wait = (
+            max(0, int(current_time_ns) - int(wait_start))
+            if wait_start is not None else 0
+        )
+        margin_wins = no_model or (
+            redirect_total + self.oneshot_redirect_margin_ns < local_total
+        )
+        deadline_exceeded = no_model or (
+            local_wait > self.oneshot_max_local_wait_ns
+            or elapsed_wait > self.oneshot_max_local_wait_ns
+        )
+
+        geo.update({
+            'oneshot_prediction_model': (
+                'none' if no_model else 'offline_ttft_formula_dynamic'
+            ),
+            'oneshot_candidate_selector': candidate_selector or 'second_nearest',
+            'oneshot_decision_time_ns': int(current_time_ns),
+            'oneshot_predicted_local_wait_ns': local_wait,
+            'oneshot_predicted_local_ttft_ns': local_total,
+            'oneshot_predicted_redirect_ttft_ns': redirect_total,
+            'oneshot_redirect_margin_ns': self.oneshot_redirect_margin_ns,
+            'oneshot_max_local_wait_ns': self.oneshot_max_local_wait_ns,
+            'oneshot_target_admissible': 1,
+            'oneshot_target_reservation_enabled': int(
+                self.enable_oneshot_target_reservation
+            ),
+            'oneshot_selected_target_instance_id': target_id,
+        })
+        if not no_model:
+            geo.update({
+                'oneshot_formula_local_route_probability': local_prediction['route_probability'],
+                'oneshot_formula_local_route_positive_ms': local_prediction['route_positive_ms'],
+                'oneshot_formula_local_route_ms': local_prediction['route_ms'],
+                'oneshot_formula_local_scheduler_ms': local_prediction['scheduler_ms'],
+                'oneshot_formula_local_compute_ms': local_prediction['compute_ms'],
+                'oneshot_formula_redirect_route_probability': redirect_prediction['route_probability'],
+                'oneshot_formula_redirect_route_positive_ms': redirect_prediction['route_positive_ms'],
+                'oneshot_formula_redirect_route_ms': redirect_prediction['route_ms'],
+                'oneshot_formula_redirect_scheduler_ms': redirect_prediction['scheduler_ms'],
+                'oneshot_formula_redirect_compute_ms': redirect_prediction['compute_ms'],
+            })
+
+        if not margin_wins and not deadline_exceeded:
+            geo.update({
+                'oneshot_selected_route': 'undecided',
+                'oneshot_decision_reason': 'awaiting_predicted_local',
+            })
+            return self._defer_capacity_retry(
+                req_data, current_time_ns, home, target
+            )
+
+        mode = (
+            'kv_handoff'
+            if reuse_tokens > 0 and target.enable_prefix_caching
+            else 'cold_migrate'
+        )
+        req_data['_oneshot_selected_route'] = mode
+        geo['oneshot_selected_route'] = mode
+        geo['oneshot_decision_reason'] = (
+            'home_not_admissible_min_pressure'
+            if no_model else
+            'elapsed_local_wait_exceeds_limit'
+            if elapsed_wait > self.oneshot_max_local_wait_ns
+            else 'predicted_local_wait_exceeds_limit'
+            if deadline_exceeded
+            else 'redirect_beats_local_by_margin'
+        )
+        req_data['arrival_time_ns'] = int(current_time_ns) + request_migration
+        if self.enable_oneshot_target_reservation:
+            self._reserve_adaptive_target(target, req_data, target_prefill)
+            req_data['_adaptive_reserved_instance_id'] = target_id
+        req_data['assigned_instance_id'] = target_id
+        geo.update({
+            'nearest_gpu_id': geo.get('gpu_id'),
+            'gpu_id': target_id,
+            'distance_m': float(geo['second_nearest_distance_m']),
+            'downlink_distance_latency_ns': downlink_distance_ns,
+            'downlink_serialization_latency_ns': downlink_serialization_ns,
+            'downlink_latency_ns': downlink_distance_ns + downlink_serialization_ns,
+            'communication_latency_ns': (
+                float(geo.get('uplink_latency_ns', 0)) + request_migration
+                + downlink_distance_ns + downlink_serialization_ns
+            ),
+            'rerouted': 1,
+            'migration_latency_ns': request_migration,
+        })
+        if mode == 'kv_handoff':
+            self._attach_kv_handoff(req_data, home_id, target_id)
+        else:
+            req_data.pop('failover', None)
+        return True
+
     def _ttft_formula_features(self, req_data, candidate_sched):
         candidate = self._capacity_snapshot(candidate_sched, req_data)
         snapshots = [
@@ -1175,9 +1467,18 @@ class Router:
             redirect_prediction = self.ttft_formula.predict(
                 target_features, 'NEAREST_MIGRATE_KV'
             )
-            local_wait = local_prediction['route_ms'] * 1e6
+            # This branch is reached only after observing that home is not
+            # admissible, so a probability-weighted mean is unsafe for a hard
+            # wait deadline. Use the scenario-held-out upper prediction for
+            # the routing decision while retaining the point estimate in the
+            # diagnostic component fields below.
+            local_wait = local_prediction['route_upper_ms'] * 1e6
             local_total = (
-                local_prediction['ttft_ms'] * 1e6
+                (
+                    local_prediction['ttft_ms']
+                    - local_prediction['route_ms']
+                    + local_prediction['route_upper_ms']
+                ) * 1e6
                 + float(geo.get('downlink_latency_ns', 0))
             )
             redirect_total = (
@@ -1400,7 +1701,14 @@ class Router:
         # now assume the same starting condition (every request's prefix is
         # already cached on its *home* GPU); only whether a redirected
         # request's cache follows it to the new GPU differs by policy.
-        if self.routing_policy in ("NEAREST_KV", "NEAREST_MIGRATE_KV", "NEAREST_REJECT", "NEAREST_MIGRATE", "NEAREST_SECOND_TTFT_RESERVE", "NEAREST_CAPACITY_ONESHOT_KV_RESERVE", "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE"):
+        if self.routing_policy in (
+            "NEAREST_KV", "NEAREST_MIGRATE_KV", "NEAREST_REJECT",
+            "NEAREST_MIGRATE", "NEAREST_SECOND_TTFT_RESERVE",
+            "NEAREST_CAPACITY_ONESHOT_KV_RESERVE",
+            "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE",
+            "NEAREST_CAPACITY_DYNAMIC_FORMULA_KV_RESERVE",
+            *MULTI_CANDIDATE_SELECTORS,
+        ):
             req_data['reuse_prefix_toks'] = int(row.get('reuse_prefix_toks', 0))
         # <<< SPEC: fair-comparison KV baseline
         if enable_prefix_caching:
@@ -1409,7 +1717,14 @@ class Router:
                 (
                     failover and failover.get('failover_mode') == 'migrate_kv'
                 ) or (
-                    self.routing_policy in ("NEAREST_KV", "NEAREST_MIGRATE_KV", "NEAREST_REJECT", "NEAREST_MIGRATE", "NEAREST_SECOND_TTFT_RESERVE", "NEAREST_CAPACITY_ONESHOT_KV_RESERVE", "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE")
+                    self.routing_policy in (
+                        "NEAREST_KV", "NEAREST_MIGRATE_KV", "NEAREST_REJECT",
+                        "NEAREST_MIGRATE", "NEAREST_SECOND_TTFT_RESERVE",
+                        "NEAREST_CAPACITY_ONESHOT_KV_RESERVE",
+                        "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE",
+                        "NEAREST_CAPACITY_DYNAMIC_FORMULA_KV_RESERVE",
+                        *MULTI_CANDIDATE_SELECTORS,
+                    )
                     and int(row.get('reuse_prefix_toks', 0)) > 0
                 )
             ) and not input_hash_ids:
@@ -1420,7 +1735,13 @@ class Router:
             req_data['assigned_instance_id'] = int(row['assigned_instance_id'])
         if failover:
             req_data['failover'] = failover
-        if self.routing_policy in ("NEAREST_KV", "NEAREST_MIGRATE_KV", "NEAREST_SECOND_TTFT_RESERVE", "NEAREST_CAPACITY_ONESHOT_KV_RESERVE", "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE"):
+        if self.routing_policy in (
+            "NEAREST_KV", "NEAREST_MIGRATE_KV", "NEAREST_SECOND_TTFT_RESERVE",
+            "NEAREST_CAPACITY_ONESHOT_KV_RESERVE",
+            "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE",
+            "NEAREST_CAPACITY_DYNAMIC_FORMULA_KV_RESERVE",
+            *MULTI_CANDIDATE_SELECTORS,
+        ):
             if 'kv_migration_bandwidth_gbps' in row:
                 req_data['kv_migration_bandwidth_gbps'] = float(row['kv_migration_bandwidth_gbps'])
             if 'kv_migration_distance_m' in row:
@@ -1660,6 +1981,17 @@ class Router:
                     self._insert_pending_sorted(req_data)
                     continue
 
+            if self.routing_policy in (
+                "NEAREST_CAPACITY_DYNAMIC_FORMULA_KV_RESERVE",
+                *MULTI_CANDIDATE_SELECTORS,
+            ):
+                if self._maybe_capacity_dynamic_formula_route(
+                    req_data, current_time_ns
+                ):
+                    self._pending_requests.pop(self._pending_idx)
+                    self._insert_pending_sorted(req_data)
+                    continue
+
             # Capacity may change while a redirected request is in transit.
             # Revalidate the chosen target immediately before final admission.
             if (
@@ -1673,6 +2005,8 @@ class Router:
                     self.routing_policy in (
                         "NEAREST_CAPACITY_ONESHOT_KV_RESERVE",
                         "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE",
+                        "NEAREST_CAPACITY_DYNAMIC_FORMULA_KV_RESERVE",
+                        *MULTI_CANDIDATE_SELECTORS,
                     )
                     and req_data.get('_oneshot_selected_route') in ('cold_migrate', 'kv_handoff')
                 )
@@ -1739,8 +2073,10 @@ class Router:
                 and not req_data.get('_adaptive_resolved', False)
             ) or (
                 self.routing_policy in (
-                    "NEAREST_CAPACITY_ONESHOT_KV_RESERVE",
-                    "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE",
+                        "NEAREST_CAPACITY_ONESHOT_KV_RESERVE",
+                        "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE",
+                        "NEAREST_CAPACITY_DYNAMIC_FORMULA_KV_RESERVE",
+                        *MULTI_CANDIDATE_SELECTORS,
                 )
                 and req_data.get('_oneshot_selected_route') == 'local'
             ):

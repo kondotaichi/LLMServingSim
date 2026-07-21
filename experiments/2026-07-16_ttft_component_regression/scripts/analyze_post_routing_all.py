@@ -342,14 +342,12 @@ def bootstrap_importance(ablation, repetitions=2000):
     rng = np.random.default_rng(20260719)
     rows = []
     for keys, frame in ablation.groupby(["feature_set", "target", "group"]):
-        scenarios = frame.test_scenario.unique()
-        values = []
-        for _ in range(repetitions):
-            sampled = rng.choice(scenarios, size=len(scenarios), replace=True)
-            values.append(np.mean([
-                frame.loc[frame.test_scenario == scenario, "mae_increase_ms"].mean()
-                for scenario in sampled
-            ]))
+        scenario_means = frame.groupby("test_scenario").mae_increase_ms.mean().to_numpy()
+        scenarios = len(scenario_means)
+        sampled = rng.choice(
+            scenario_means, size=(repetitions, scenarios), replace=True
+        )
+        values = sampled.mean(axis=1)
         rows.append({
             "feature_set": keys[0],
             "target": keys[1],
@@ -358,7 +356,7 @@ def bootstrap_importance(ablation, repetitions=2000):
             "ci95_low_ms": np.quantile(values, 0.025),
             "ci95_high_ms": np.quantile(values, 0.975),
             "mean_partial_r2": frame.partial_r2.mean(),
-            "n_scenarios": len(scenarios),
+            "n_scenarios": scenarios,
         })
     return pd.DataFrame(rows)
 

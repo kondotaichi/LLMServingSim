@@ -108,6 +108,10 @@ class OfflineTtftFormula:
             exp_logit = math.exp(logit)
             route_probability = exp_logit / (1.0 + exp_logit)
         route_positive_ms = self._positive_route_ms(transformed)
+        upper = self.tail.get('upper_prediction', {})
+        route_upper_ms = route_positive_ms + max(
+            0.0, float(upper.get('residual_ms', 0.0))
+        )
         route_ms = route_probability * route_positive_ms
         scheduler_ms = max(0.0, self._linear(
             self.scheduler_coefficients, transformed, 'intercept_ms'
@@ -122,6 +126,7 @@ class OfflineTtftFormula:
         return {
             'route_probability': route_probability,
             'route_positive_ms': route_positive_ms,
+            'route_upper_ms': route_upper_ms,
             'route_ms': route_ms,
             'scheduler_ms': scheduler_ms,
             'compute_ms': compute_ms,

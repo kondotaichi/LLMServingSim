@@ -36,7 +36,7 @@ matching runtime knobs per `instances[i]`; see
 
 | Flag | Choices | Default | Description |
 | --- | --- | --- | --- |
-| `--request-routing-policy` | `LOAD` / `RR` / `RAND` / `PROMPT` / `QUEUE` / `HYBRID` / `CUSTOM` / `NEAREST` / `NEAREST_KV` / `NEAREST_REJECT` / `NEAREST_MIGRATE` / `NEAREST_MIGRATE_KV` / `NEAREST_SECOND_TTFT_RESERVE` / `NEAREST_CAPACITY_ONESHOT_KV_RESERVE` / `NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE` | `LOAD` | Cross-instance request routing |
+| `--request-routing-policy` | `LOAD` / `RR` / `RAND` / `PROMPT` / `QUEUE` / `HYBRID` / `CUSTOM` / `NEAREST` / `NEAREST_KV` / `NEAREST_REJECT` / `NEAREST_MIGRATE` / `NEAREST_MIGRATE_KV` / `NEAREST_SECOND_TTFT_RESERVE` / `NEAREST_CAPACITY_ONESHOT_KV_RESERVE` / `NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE` / `NEAREST_CAPACITY_DYNAMIC_FORMULA_KV_RESERVE` / `NEAREST_CAPACITY_MULTI_FORMULA_KV_RESERVE` / `NEAREST_CAPACITY_MULTI_WAITING_FORMULA_KV_RESERVE` / `NEAREST_CAPACITY_MULTI_PRESSURE_FORMULA_KV_RESERVE` / `NEAREST_CAPACITY_MULTI_RANDOM_FORMULA_KV_RESERVE` / `NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE` | `LOAD` | Cross-instance request routing |
 | `--second-ttft-reserve-token-time-ns` | float | `100000` | Estimated time per queued or prefill token for `NEAREST_SECOND_TTFT_RESERVE` |
 | `--second-ttft-reserve-iteration-time-ns` | float | `1000000` | Estimated fixed cost per token-budget iteration for `NEAREST_SECOND_TTFT_RESERVE` |
 | `--oneshot-redirect-margin-ns` | float | `200000000` | Required predicted redirect advantage for one-shot policies |

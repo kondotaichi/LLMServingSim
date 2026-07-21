@@ -254,5 +254,189 @@ class CapacityOneshotRouterTest(unittest.TestCase):
         self.assertIn('oneshot_formula_redirect_compute_ms', request['geo'])
 
 
+class DynamicFormulaRouterTest(unittest.TestCase):
+    @staticmethod
+    def formula_prediction():
+        return {
+            'route_probability': 1.0,
+            'route_positive_ms': 10.0,
+            'route_upper_ms': 10.0,
+            'route_ms': 10.0,
+            'scheduler_ms': 1.0,
+            'compute_ms': 1.0,
+            'ttft_ms': 12.0,
+        }
+
+    @staticmethod
+    def add_formula_features(request):
+        request['_ttft_formula_workload_features'] = {
+            'request_rate_rps': 3.0,
+            'arrival_offset_s': 10.0,
+            'interarrival_ms': 300.0,
+            'global_arrivals_1s': 2,
+            'global_arrivals_5s': 15,
+            'home_arrivals_1s': 1,
+            'home_arrivals_5s': 2,
+            'home_workload_share': 0.1,
+        }
+
+    @staticmethod
+    def constrain(scheduler):
+        scheduler.request.append(FakeRequest(99 + scheduler.instance_id, 100, 10_000))
+        scheduler.memory.mem_for_kv = 100_500
+
+    def make_router(self, schedulers, policy):
+        router = Router(
+            len(schedulers), schedulers, 1,
+            routing_policy=policy,
+            gpu_backbone_bandwidth_gbps=100.0,
+            apn_fixed_propagation_ns=10.0,
+            oneshot_redirect_margin_ns=0,
+            oneshot_max_local_wait_ns=1,
+        )
+        router.ttft_formula = SimpleNamespace(
+            predict=lambda _features, _policy: self.formula_prediction()
+        )
+        return router
+
+    def test_blocked_target_remains_undecided_then_redirects(self):
+        home = make_scheduler(0)
+        target = make_scheduler(1)
+        self.constrain(home)
+        self.constrain(target)
+        router = self.make_router(
+            [home, target], 'NEAREST_CAPACITY_DYNAMIC_FORMULA_KV_RESERVE'
+        )
+        request = make_request(1)
+        self.add_formula_features(request)
+
+        deferred = router._maybe_capacity_dynamic_formula_route(request, 1_000)
+
+        self.assertTrue(deferred)
+        self.assertNotIn('_oneshot_selected_route', request)
+        self.assertEqual(
+            request['geo']['oneshot_decision_reason'],
+            'awaiting_candidate_capacity',
+        )
+
+        target.request.clear()
+        deferred = router._maybe_capacity_dynamic_formula_route(request, 2_000)
+
+        self.assertTrue(deferred)
+        self.assertEqual(request['_oneshot_selected_route'], 'kv_handoff')
+        self.assertEqual(request['assigned_instance_id'], 1)
+
+    def test_multi_candidate_uses_available_non_second_target(self):
+        home = make_scheduler(0)
+        second = make_scheduler(1)
+        third = make_scheduler(2)
+        self.constrain(home)
+        self.constrain(second)
+        router = self.make_router(
+            [home, second, third],
+            'NEAREST_CAPACITY_MULTI_FORMULA_KV_RESERVE',
+        )
+        request = make_request(1)
+        self.add_formula_features(request)
+
+        deferred = router._maybe_capacity_dynamic_formula_route(request, 1_000)
+
+        self.assertTrue(deferred)
+        self.assertEqual(request['_oneshot_selected_route'], 'kv_handoff')
+        self.assertEqual(request['assigned_instance_id'], 2)
+        self.assertEqual(
+            request['geo']['oneshot_selected_target_instance_id'], 2
+        )
+
+    def test_multi_waiting_selects_target_with_fewest_waiting_requests(self):
+        home = make_scheduler(0)
+        busy = make_scheduler(1, requests=[FakeRequest(10, 100, 120)])
+        idle = make_scheduler(2)
+        self.constrain(home)
+        router = self.make_router(
+            [home, busy, idle],
+            'NEAREST_CAPACITY_MULTI_WAITING_FORMULA_KV_RESERVE',
+        )
+        request = make_request(1)
+        self.add_formula_features(request)
+
+        router._maybe_capacity_dynamic_formula_route(request, 1_000)
+
+        self.assertEqual(request['assigned_instance_id'], 2)
+        self.assertEqual(
+            request['geo']['oneshot_candidate_selector'], 'min_waiting'
+        )
+
+    def test_multi_pressure_selects_target_with_lowest_capacity_pressure(self):
+        home = make_scheduler(0)
+        pressured = make_scheduler(
+            1, requests=[FakeRequest(10, 100, 50_000)]
+        )
+        idle = make_scheduler(2)
+        self.constrain(home)
+        router = self.make_router(
+            [home, pressured, idle],
+            'NEAREST_CAPACITY_MULTI_PRESSURE_FORMULA_KV_RESERVE',
+        )
+        request = make_request(1)
+        self.add_formula_features(request)
+
+        router._maybe_capacity_dynamic_formula_route(request, 1_000)
+
+        self.assertEqual(request['assigned_instance_id'], 2)
+        self.assertEqual(
+            request['geo']['oneshot_candidate_selector'], 'min_pressure'
+        )
+
+    def test_multi_random_uses_seeded_candidate_choice(self):
+        home = make_scheduler(0)
+        targets = [make_scheduler(instance_id) for instance_id in (1, 2, 3)]
+        self.constrain(home)
+        router = self.make_router(
+            [home, *targets],
+            'NEAREST_CAPACITY_MULTI_RANDOM_FORMULA_KV_RESERVE',
+        )
+        request = make_request(1)
+        self.add_formula_features(request)
+
+        router._maybe_capacity_dynamic_formula_route(request, 1_000)
+
+        self.assertEqual(request['assigned_instance_id'], 3)
+        self.assertEqual(
+            request['geo']['oneshot_candidate_selector'], 'random'
+        )
+
+    def test_multi_pressure_no_model_redirects_without_formula_features(self):
+        home = make_scheduler(0)
+        pressured = make_scheduler(
+            1, requests=[FakeRequest(10, 100, 50_000)]
+        )
+        idle = make_scheduler(2)
+        self.constrain(home)
+        router = Router(
+            3, [home, pressured, idle], 1,
+            routing_policy='NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE',
+            gpu_backbone_bandwidth_gbps=100.0,
+            apn_fixed_propagation_ns=10.0,
+        )
+        request = make_request(1)
+
+        deferred = router._maybe_capacity_dynamic_formula_route(
+            request, 1_000
+        )
+
+        self.assertTrue(deferred)
+        self.assertIsNone(router.ttft_formula)
+        self.assertEqual(request['assigned_instance_id'], 2)
+        self.assertEqual(
+            request['geo']['oneshot_candidate_selector'],
+            'min_pressure_no_model',
+        )
+        self.assertEqual(
+            request['geo']['oneshot_decision_reason'],
+            'home_not_admissible_min_pressure',
+        )
+
+
 if __name__ == '__main__':
     unittest.main()

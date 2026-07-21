@@ -29,6 +29,7 @@ OUTPUT_DIR = ROOT / "analysis/ttft_formula"
 FIGURE_DIR = ROOT / "figures/ttft_formula"
 MODEL_DIR = ROOT / "models/ttft_formula"
 RANDOM_STATE = 20260720
+ROUTE_UPPER_QUANTILE = 0.90
 
 NUMERIC_FEATURES = [
     "input_tokens",
@@ -248,7 +249,7 @@ def export_linear_coefficients(models):
     }).to_csv(OUTPUT_DIR / "numeric_feature_scaling.csv", index=False)
 
 
-def export_tail_trees(models):
+def export_tail_trees(models, route_upper_residual_ms):
     model = models["route_tail"]
     names = [
         name.split("__", 1)[1]
@@ -280,6 +281,11 @@ def export_tail_trees(models):
         "initial_prediction": float(np.ravel(model.init_.constant_)[0]),
         "learning_rate": float(model.learning_rate),
         "log_prediction_bounds": list(models["route_log_bounds"]),
+        "upper_prediction": {
+            "method": "scenario_held_out_additive_residual",
+            "quantile": ROUTE_UPPER_QUANTILE,
+            "residual_ms": float(route_upper_residual_ms),
+        },
         "trees": trees,
     }
     (OUTPUT_DIR / "route_positive_tree_coefficients.json").write_text(
@@ -317,6 +323,20 @@ def main():
     dataset = prepare_dataset()
     predictions = cross_validate(dataset)
     summary = metrics(predictions)
+    positive = predictions.actual_route_positive.astype(bool)
+    route_upper_residual_ms = max(0.0, float(np.quantile(
+        predictions.loc[positive, "actual_route_ms"]
+        - predictions.loc[positive, "route_positive_ms"],
+        ROUTE_UPPER_QUANTILE,
+    )))
+    upper_prediction = (
+        predictions.loc[positive, "route_positive_ms"] + route_upper_residual_ms
+    )
+    summary["route_upper_quantile"] = ROUTE_UPPER_QUANTILE
+    summary["route_upper_residual_ms"] = route_upper_residual_ms
+    summary["route_positive_upper_coverage"] = float(np.mean(
+        predictions.loc[positive, "actual_route_ms"] <= upper_prediction
+    ))
     final_models = fit_components(dataset)
     bundle = {
         **final_models,
@@ -332,7 +352,7 @@ def main():
         json.dumps(summary, indent=2), encoding="utf-8"
     )
     export_linear_coefficients(final_models)
-    export_tail_trees(final_models)
+    export_tail_trees(final_models, route_upper_residual_ms)
     plot_predictions(predictions)
     print(json.dumps(summary, indent=2))
 

@@ -134,6 +134,22 @@ communication use the simulator's analytical link model. The margin and local
 wait limit are evaluated only at first arrival, so the policy cannot wait and
 then change its decision to redirect.
 
+The dynamic formula policy re-evaluates home and target capacity while a
+request remains undecided. Its multi-candidate variants consider every
+admissible non-home GPU under fixed APN propagation. They use the same offline
+formula for the local-versus-redirect gate and differ only in target ranking:
+
+- `NEAREST_CAPACITY_MULTI_FORMULA_KV_RESERVE`: minimum predicted redirect TTFT.
+- `NEAREST_CAPACITY_MULTI_WAITING_FORMULA_KV_RESERVE`: fewest waiting requests.
+- `NEAREST_CAPACITY_MULTI_PRESSURE_FORMULA_KV_RESERVE`: minimum projected KV capacity pressure.
+- `NEAREST_CAPACITY_MULTI_RANDOM_FORMULA_KV_RESERVE`: seeded uniform random target.
+- `NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE`: no-model ablation that immediately
+  redirects a home-blocked request to the admissible target with minimum projected
+  KV capacity pressure.
+
+The heuristic and random variants are intended as ablations of the learned
+target ranker. They do not replace the formula-based local-wait gate.
+
 ### When to use flat
 
 - ShareGPT-style benchmarks (independent prompts).

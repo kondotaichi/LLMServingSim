@@ -28,6 +28,7 @@
 - [90秒版との比較](analysis/comparison_with_90s.csv)
 - [7系列breakdown](analysis/seven_series_breakdown.csv)
 - [Routing flow](analysis/routing_flows.md)
+- [Phase1学習済みformulate modelの評価](reports/06_formula_phase1_model_analysis.md)
 
 比較元:
 
@@ -38,6 +39,7 @@
 ```bash
 MPLCONFIGDIR=/tmp/llmservingsim-matplotlib python3 experiments/2026-07-16_input10000_reuse05_180s_three_policy/scripts/analyze_three_policy.py
 MPLCONFIGDIR=/tmp/llmservingsim-matplotlib python3 experiments/2026-07-16_input10000_reuse05_180s_three_policy/scripts/compare_with_90s.py
+MPLCONFIGDIR=/tmp/llmservingsim-matplotlib python3 experiments/2026-07-16_input10000_reuse05_180s_three_policy_良結果/scripts/analyze_formula_phase1_model.py
 ```
 
 Simulationの再実行:

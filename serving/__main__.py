@@ -232,7 +232,13 @@ def main():
                         choices=['LOAD', 'RR', 'RAND', 'PROMPT', 'QUEUE', 'HYBRID', 'CUSTOM', 'NEAREST',
                                  'NEAREST_KV', 'NEAREST_REJECT', 'NEAREST_MIGRATE', 'NEAREST_MIGRATE_KV',
                                  'NEAREST_SECOND_TTFT_RESERVE', 'NEAREST_CAPACITY_ONESHOT_KV_RESERVE',
-                                 'NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE'],
+                                 'NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE',
+                                 'NEAREST_CAPACITY_DYNAMIC_FORMULA_KV_RESERVE',
+                                 'NEAREST_CAPACITY_MULTI_FORMULA_KV_RESERVE',
+                                 'NEAREST_CAPACITY_MULTI_WAITING_FORMULA_KV_RESERVE',
+                                 'NEAREST_CAPACITY_MULTI_PRESSURE_FORMULA_KV_RESERVE',
+                                 'NEAREST_CAPACITY_MULTI_RANDOM_FORMULA_KV_RESERVE',
+                                 'NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE'],
                         default='LOAD',
                         help='request routing policy across instances: LOAD (vLLM-style weighted least-loaded, default), '
                         'RR (round-robin), RAND (random), PROMPT (prompt length to token-budget fit), '
@@ -256,7 +262,17 @@ def main():
                         '(keep admissible requests local; otherwise make one local-wait versus KV-handoff '
                         'decision with a margin and predicted local-wait limit), '
                         'NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE (same one-shot constraints, using the '
-                        'exported offline TTFT component formula instead of the token-time heuristic)')
+                        'exported offline TTFT component formula instead of the token-time heuristic), '
+                        'NEAREST_CAPACITY_DYNAMIC_FORMULA_KV_RESERVE (re-evaluate home and second-nearest '
+                        'capacity while undecided), NEAREST_CAPACITY_MULTI_FORMULA_KV_RESERVE (same dynamic '
+                        're-evaluation across every non-home GPU, ranked by the offline formula; requires '
+                        'fixed APN propagation), NEAREST_CAPACITY_MULTI_WAITING_FORMULA_KV_RESERVE / '
+                        'NEAREST_CAPACITY_MULTI_PRESSURE_FORMULA_KV_RESERVE / '
+                        'NEAREST_CAPACITY_MULTI_RANDOM_FORMULA_KV_RESERVE (same formula-based local-versus-redirect '
+                        'gate, but rank admissible redirect targets by waiting requests, capacity pressure, or a '
+                        'seeded random choice), NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE (no-model ablation: '
+                        'keep an admissible request local; otherwise immediately redirect to the admissible target '
+                        'with minimum capacity pressure)')
     parser.add_argument('--gpu-backbone-bandwidth-gbps', type=float, default=None,
                         help='GPU-to-GPU backbone link bandwidth in Gbps, used by NEAREST_MIGRATE and '
                         'NEAREST_MIGRATE_KV for the inter-GPU request forward (distinct from the UE<->GPU '

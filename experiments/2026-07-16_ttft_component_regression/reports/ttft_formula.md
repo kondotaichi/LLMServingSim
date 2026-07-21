@@ -161,28 +161,45 @@ $\gamma^Tz$へ含めた。
 
 ## 信頼性評価
 
-6,000 requests、7 independent scenariosをleave-one-scenario-outで評価した。
+Phase 1完了後の13,500 requests、15 independent scenariosを
+leave-one-scenario-outで再学習・評価した。
 
 | Target | OOF metric |
 |---|---:|
-| Queue発生 | ROC-AUC 0.9964 |
-| Queue発生 | PR-AUC 0.9754 |
-| `t_route` | MAE 989.6 ms |
-| `t_sched` | MAE 56.5 ms |
-| `t_compute` | MAE 59.5 ms |
+| Queue発生 | ROC-AUC 0.99995 |
+| Queue発生 | PR-AUC 0.99971 |
+| `t_route` | MAE 630.2 ms |
+| `t_sched` | MAE 56.6 ms |
+| `t_compute` | MAE 59.7 ms |
 | `t_comm`省略 | MAE 2.9 ms |
-| **TTFT** | **MAE 1,067.5 ms** |
-| **TTFT** | **R² 0.356** |
+| **TTFT** | **MAE 716.1 ms** |
+| **TTFT** | **R² 0.467** |
 
-Absolute TTFT errorの分布はp50 79.9 ms、p90 2,282 ms、p95 6,829 ms、p99 18,858 msだった。
-81.9%のrequestsは500 ms以内、86.9%は1秒以内だった。
+Absolute TTFT errorの分布はp50 73.2 ms、p90 1,015 ms、p95 4,050 ms、
+p99 13,578 msだった。
 
 ![TTFT式のOOF予測](../figures/ttft_formula/ttft_formula_oof.png)
 
 この式はqueue発生と通常領域には一定の信頼性があるが、高負荷long-tailの時間量を過小予測
-する。特に`input6000_rate5p0_reuse00` scenarioのMAEは3.74秒だった。したがって、容量制御の
-発生リスク判定や中央値近傍のTTFT推定には使用できるが、p95/p99 SLAを保証する式としては
-まだ不十分である。
+する。特に`input6000_rate5p0_reuse00_seed1` scenarioのMAEは3.71秒だった。したがって、
+point predictionだけをp95/p99 SLAやhard deadlineの判定に使うことはできない。
+
+### Routing判断用の上側予測
+
+旧formulate版は、home GPUが収容不能と観測済みでも
+`p_route * t_route_positive`を1秒deadlineと比較していた。このため旧実験では、実際には
+1.4–11.4秒待った9 requestsを0.14–0.64秒と見積もり、誤ってlocalへ残した。
+
+この用途ではpoint predictionとは別に、scenario-held-out residualの90 percentileを加えた
+上側予測を使用する。
+
+$$
+\hat t_{route,upper}=\hat t_{route,+}+10{,}311.69\;\mathrm{ms}
+$$
+
+この補正値とquantileは`route_positive_tree_coefficients.json::upper_prediction`へ保存した。
+OOFで正値router waitの89.96%を上から被覆し、1秒超の実待ちを1秒以下と判定した例は0件だった。
+Simulatorはpoint estimateを診断列に保持しつつ、local/redirectとdeadlineの判断にはこの上側予測を使う。
 
 ## 係数・model artifact
 

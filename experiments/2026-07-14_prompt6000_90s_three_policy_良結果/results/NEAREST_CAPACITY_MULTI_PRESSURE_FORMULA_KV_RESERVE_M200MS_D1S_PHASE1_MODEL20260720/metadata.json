@@ -1,0 +1,29 @@
+{
+  "num_users": 20,
+  "num_gpus": 10,
+  "num_instances": 10,
+  "model_name": "meta-llama/Llama-3.1-8B",
+  "gpu_hardware": "RTX4090",
+  "dataset": "workloads/generated/cell_apn/prompt6000_90s/sharegpt_300_prompt6000_reuse50_90s.jsonl",
+  "cluster_config": "configs/cluster/ten_node_rtx4090_apn.json",
+  "request_routing_policy": "NEAREST_CAPACITY_MULTI_PRESSURE_FORMULA_KV_RESERVE",
+  "max_num_seqs": 128,
+  "max_num_batched_tokens": 2048,
+  "output_files": {
+    "requests": "/app/LLMServingSim/experiments/2026-07-14_prompt6000_90s_three_policy_良結果/results/NEAREST_CAPACITY_MULTI_PRESSURE_FORMULA_KV_RESERVE_M200MS_D1S_PHASE1_MODEL20260720/requests.csv",
+    "users": "/app/LLMServingSim/experiments/2026-07-14_prompt6000_90s_three_policy_良結果/results/NEAREST_CAPACITY_MULTI_PRESSURE_FORMULA_KV_RESERVE_M200MS_D1S_PHASE1_MODEL20260720/users.csv",
+    "gpus": "/app/LLMServingSim/experiments/2026-07-14_prompt6000_90s_three_policy_良結果/results/NEAREST_CAPACITY_MULTI_PRESSURE_FORMULA_KV_RESERVE_M200MS_D1S_PHASE1_MODEL20260720/gpus.csv"
+  },
+  "git_commit_hash": "3f7a6247cff1b4a2c6e21ed8a10ae9d413d7e905",
+  "network_model": "fixed_throughput_distance_proportional",
+  "network_contention": false,
+  "network_queueing": false,
+  "network_jitter": false,
+  "packet_loss": false,
+  "user_mobility": false,
+  "routing_policy": "nearest_capacity_multi_pressure_formula_kv_reserve",
+  "ttft_definition": "simulator_ttft_ns = first_token_ready_time_ns - gpu_arrival_time_ns (== req.arrival); e2e_ttft_ns = uplink_latency_ns + simulator_ttft_ns + downlink_latency_ns",
+  "prefill_service_definition": "sum of wall-clock batch durations (ASTRA-Sim-reported finish_time_ns - batch start) over every batch a request participated in while its TTFT was not yet stamped; a batch's full duration is attributed to every request in it (not divided), representing each request's own wall-clock experience rather than an exclusive GPU-time allocation",
+  "decode_definition": "decode_after_ttft_ns = decode_queueing_ns + decode_active_ns, measured from first-token-ready to request completion; never added into e2e_ttft_ns",
+  "bottleneck_definition": "ttft_bottleneck = argmax(communication_latency_ns, queueing_before_ttft_ns, prefill_service_ns), ties broken queueing > prefill > communication; total_latency_bottleneck additionally compares decode_after_ttft_ns, ties broken queueing > prefill > decode > communication"
+}

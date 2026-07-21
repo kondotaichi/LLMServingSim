@@ -39,6 +39,11 @@
 - [容量ベースredirectと最寄りGPU待機の比較](reports/03_redirect_vs_wait_local_analysis.md)
 - [Redirect先集中とScheduler queueへの影響](reports/04_redirect_concentration_analysis.md)
 - [現行redirect routingの課題と適応型routing設計案](reports/05_adaptive_routing_design.md)
+- [Phase1学習済みformulate modelの90s評価](reports/06_formula_phase1_model_analysis.md)
+- [Dynamic再評価とMulti-candidate formulateの評価](reports/07_formula_dynamic_variants.md)
+- [全routing policyの統一比較](reports/08_all_policy_comparison.md)
+- [Multi-candidateがKV handoffより効いた理由](reports/09_multi_candidate_vs_kv_handoff.md)
+- [Multi-candidate selector ablation](reports/10_multi_candidate_ablation.md)
 - [主要指標の集計](analysis/summary.json)
 - [60秒版との比較集計](analysis/comparison_with_60s.json)
 - [リクエスト単位の対応表](analysis/paired_requests.csv)
@@ -58,6 +63,10 @@ MPLCONFIGDIR=/tmp/llmservingsim-matplotlib python3 experiments/2026-07-14_prompt
 MPLCONFIGDIR=/tmp/llmservingsim-matplotlib python3 experiments/2026-07-14_prompt6000_90s_three_policy/scripts/compare_with_60s.py
 MPLCONFIGDIR=/tmp/llmservingsim-matplotlib python3 experiments/2026-07-14_prompt6000_90s_three_policy/scripts/analyze_redirect_counterfactual.py
 MPLCONFIGDIR=/tmp/llmservingsim-matplotlib python3 experiments/2026-07-14_prompt6000_90s_three_policy/scripts/analyze_redirect_concentration.py
+MPLCONFIGDIR=/tmp/llmservingsim-matplotlib python3 experiments/2026-07-14_prompt6000_90s_three_policy_良結果/scripts/analyze_formula_phase1_model.py
+MPLCONFIGDIR=/tmp/llmservingsim-matplotlib python3 experiments/2026-07-14_prompt6000_90s_three_policy_良結果/scripts/analyze_formula_dynamic_variants.py
+MPLCONFIGDIR=/tmp/llmservingsim-matplotlib python3 experiments/2026-07-14_prompt6000_90s_three_policy_良結果/scripts/analyze_all_policies.py
+MPLCONFIGDIR=/tmp/llmservingsim-matplotlib python3 experiments/2026-07-14_prompt6000_90s_three_policy_良結果/scripts/analyze_multi_candidate_ablation.py
 ```
 
 スクリプトは自身の位置から実験フォルダを解決するため、生成先は常にこのフォルダ内になります。
