@@ -27,6 +27,16 @@ policies=(
   NEAREST_CAPACITY_MULTI_FORMULA_KV_RESERVE
 )
 
+is_complete() {
+  local output_dir="$1"
+  local requests_csv="${output_dir}/requests.csv"
+  local gpus_csv="${output_dir}/gpus.csv"
+  [[ -s "${requests_csv}" ]] && \
+    [[ "$(wc -l <"${requests_csv}")" -eq 301 ]] && \
+    [[ -s "${gpus_csv}" ]] && \
+    head -n 1 "${gpus_csv}" | grep -q 'utilization_pct'
+}
+
 run_policy() {
   local condition="$1"
   local policy="$2"
@@ -65,8 +75,7 @@ run_policy() {
       --geographic-gpus-csv "${GPUS_CSV}" \
       --run-id "mixed-model-value-${condition}-${policy}" \
       --log-level WARNING >"${log_file}" 2>&1; then
-    if [[ -s "${output_dir}/requests.csv" ]] && \
-       [[ "$(wc -l <"${output_dir}/requests.csv")" -eq 301 ]]; then
+    if is_complete "${output_dir}"; then
       echo "COMPLETED" >"${status_file}"
       return 0
     fi
@@ -81,9 +90,7 @@ tasks=()
 while IFS=, read -r condition _; do
   [[ "${condition}" == "condition" ]] && continue
   for policy in "${policies[@]}"; do
-    output_csv="${SCRIPT_DIR}/results/${condition}/${policy}/requests.csv"
-    if [[ "${SKIP_COMPLETED}" == "1" ]] && [[ -s "${output_csv}" ]] && \
-       [[ "$(wc -l <"${output_csv}")" -eq 301 ]]; then
+    if [[ "${SKIP_COMPLETED}" == "1" ]] && is_complete "${SCRIPT_DIR}/results/${condition}/${policy}"; then
       echo "Skipping completed ${condition} ${policy}"
     else
       tasks+=("${condition} ${policy}")

@@ -348,6 +348,38 @@ class DynamicFormulaRouterTest(unittest.TestCase):
             request['geo']['oneshot_selected_target_instance_id'], 2
         )
 
+    def test_counterfactual_override_forces_admissible_candidate(self):
+        home = make_scheduler(0)
+        first = make_scheduler(1)
+        forced = make_scheduler(2)
+        self.constrain(home)
+        router = Router(
+            3, [home, first, forced], 1,
+            routing_policy='NEAREST_CAPACITY_MULTI_FORMULA_KV_RESERVE',
+            gpu_backbone_bandwidth_gbps=100.0,
+            apn_fixed_propagation_ns=10.0,
+            oneshot_redirect_margin_ns=0,
+            oneshot_max_local_wait_ns=1,
+            counterfactual_request_id=1,
+            counterfactual_target_instance_id=2,
+        )
+        router.ttft_formula = SimpleNamespace(
+            predict=lambda _features, _policy: self.formula_prediction()
+        )
+        request = make_request(1)
+        self.add_formula_features(request)
+
+        router._maybe_capacity_dynamic_formula_route(request, 1_000)
+
+        self.assertEqual(request['assigned_instance_id'], 2)
+        selected = [
+            row for row in router.candidate_diagnostics
+            if row['selected_for_routing'] == 1
+        ]
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0]['candidate_instance_id'], 2)
+        self.assertEqual(selected[0]['counterfactual_override'], 1)
+
     def test_multi_waiting_selects_target_with_fewest_waiting_requests(self):
         home = make_scheduler(0)
         busy = make_scheduler(1, requests=[FakeRequest(10, 100, 120)])

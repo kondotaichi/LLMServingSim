@@ -270,7 +270,39 @@ def _sync_system_collective_dims(system_config_path, instances):
 
 
 # parse cluster configuration from JSON file and build config file for astra-sim
-def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading=False, enable_attn_offloading=False, inputs_root=None):
+def _apply_pp_size_override(nodes, pp_size_override):
+    """Override PP degree while preserving each instance's TP degree.
+
+    The override changes the number of NPUs owned by each logical instance to
+    ``tp_size * pp_size``. It deliberately does not merge logical instances:
+    geographic workloads key routing decisions by instance ID, so changing
+    that topology implicitly would invalidate their placement metadata.
+    """
+    if pp_size_override is None:
+        return
+    if pp_size_override < 1:
+        raise ValueError(f"pp_size override must be >= 1, got {pp_size_override}")
+
+    for node in nodes:
+        for instance in node.get("instances", []):
+            tp_size = instance.get("tp_size")
+            if tp_size is None:
+                configured_npus = instance.get("num_npus", 1)
+                configured_pp = instance.get("pp_size", 1)
+                if configured_npus % configured_pp != 0:
+                    raise ValueError(
+                        f"num_npus ({configured_npus}) not divisible by configured "
+                        f"pp_size ({configured_pp})"
+                    )
+                tp_size = configured_npus // configured_pp
+            instance["tp_size"] = tp_size
+            instance["pp_size"] = pp_size_override
+            instance["num_npus"] = tp_size * pp_size_override
+
+
+def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading=False,
+                         enable_attn_offloading=False, inputs_root=None,
+                         pp_size_override=None):
     cluster_config_path = f'../{cluster_config_path}' # move out from astra-sim folder
     
     try:
@@ -290,6 +322,8 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
 
     num_nodes = cluster_config["num_nodes"]
     nodes = cluster_config["nodes"]
+
+    _apply_pp_size_override(nodes, pp_size_override)
 
     # Validate cluster configuration
     if len(nodes) != num_nodes:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fit and export an interpretable send-time TTFT component formula."""
 
+import argparse
 import json
 from pathlib import Path
 
@@ -25,11 +26,18 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 ROOT = Path(__file__).resolve().parents[1]
 DATASET_PATH = ROOT / "analysis/post_routing/canonical_requests.csv"
-OUTPUT_DIR = ROOT / "analysis/ttft_formula"
-FIGURE_DIR = ROOT / "figures/ttft_formula"
-MODEL_DIR = ROOT / "models/ttft_formula"
+DEFAULT_OUTPUT_DIR = ROOT / "analysis/ttft_formula"
+DEFAULT_FIGURE_DIR = ROOT / "figures/ttft_formula"
+DEFAULT_MODEL_DIR = ROOT / "models/ttft_formula"
 RANDOM_STATE = 20260720
 ROUTE_UPPER_QUANTILE = 0.90
+
+# Mutable module-level paths so a trial run (--output-dir/--model-dir) can
+# write to a scratch location instead of overwriting the production
+# artifacts consumed by default by serving/core/ttft_formula.py.
+OUTPUT_DIR = DEFAULT_OUTPUT_DIR
+FIGURE_DIR = DEFAULT_FIGURE_DIR
+MODEL_DIR = DEFAULT_MODEL_DIR
 
 NUMERIC_FEATURES = [
     "input_tokens",
@@ -106,8 +114,19 @@ def fit_components(train):
         random_state=RANDOM_STATE,
     ).fit(transformed[positive], positive_log_route)
 
+    # log1p/expm1 (same treatment as the route tail model below) instead of
+    # fitting the ms-scale target directly and clipping negative predictions
+    # to 0 at serving time. The plain-ms Ridge fit produced negative raw
+    # predictions for ~48% of candidates in production traffic; clipping
+    # those to a hard 0 collapses many same-request candidates to identical
+    # total-TTFT predictions (compute_ms is candidate-invariant by design,
+    # so scheduler_ms was the only remaining source of candidate-level
+    # differentiation -- see MODEL_ITERATION_HISTORY.md item 12). log1p
+    # keeps the regression monotonic and strictly positive after expm1
+    # without an information-destroying clip.
+    log_scheduler_target = np.log1p(train.scheduler_queue_ms)
     scheduler_model = Ridge(alpha=1000.0).fit(
-        transformed, train.scheduler_queue_ms
+        transformed, log_scheduler_target
     )
     compute_model = LinearRegression().fit(
         train[COMPUTE_FEATURES], train.compute_prefill_ms
@@ -120,6 +139,9 @@ def fit_components(train):
             float(positive_log_route.min()), float(positive_log_route.max())
         ),
         "scheduler": scheduler_model,
+        "scheduler_log_bounds": (
+            float(log_scheduler_target.min()), float(log_scheduler_target.max())
+        ),
         "compute": compute_model,
     }
 
@@ -132,7 +154,10 @@ def predict_components(models, frame):
     )
     route_positive_ms = np.expm1(route_log)
     route_ms = route_probability * route_positive_ms
-    scheduler_ms = np.maximum(0, models["scheduler"].predict(transformed))
+    scheduler_log = np.clip(
+        models["scheduler"].predict(transformed), *models["scheduler_log_bounds"]
+    )
+    scheduler_ms = np.expm1(scheduler_log)
     compute_ms = np.maximum(
         0, models["compute"].predict(frame[COMPUTE_FEATURES])
     )
@@ -217,6 +242,11 @@ def export_linear_coefficients(models):
         OUTPUT_DIR / "route_event_logistic_coefficients.csv", index=False
     )
 
+    # NOTE: this linear combination now predicts log1p(scheduler_queue_ms),
+    # not ms directly -- serving/core/ttft_formula.py applies expm1() (with
+    # scheduler_ridge_meta.json's log1p_bounds clip) to recover ms. The
+    # "intercept_ms" term name is kept unchanged so the CSV schema and the
+    # generic _linear() reader in ttft_formula.py don't need to change.
     scheduler_rows = [{
         "term": "intercept_ms",
         "coefficient": float(models["scheduler"].intercept_),
@@ -227,6 +257,10 @@ def export_linear_coefficients(models):
     )
     pd.DataFrame(scheduler_rows).to_csv(
         OUTPUT_DIR / "scheduler_ridge_coefficients.csv", index=False
+    )
+    (OUTPUT_DIR / "scheduler_ridge_meta.json").write_text(
+        json.dumps({"log1p_bounds": list(models["scheduler_log_bounds"])}, indent=2),
+        encoding="utf-8",
     )
 
     compute_rows = [{
@@ -316,7 +350,35 @@ def plot_predictions(predictions):
     plt.close(fig)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output-dir", type=Path, default=None,
+        help="Where to write CSV/JSON artifacts (default: production "
+             "analysis/ttft_formula, i.e. what serving/core/ttft_formula.py "
+             "loads by default). Point this at a scratch directory for a "
+             "trial run.",
+    )
+    parser.add_argument(
+        "--model-dir", type=Path, default=None,
+        help="Where to write the joblib model bundle (default: production "
+             "models/ttft_formula).",
+    )
+    parser.add_argument(
+        "--figure-dir", type=Path, default=None,
+        help="Where to write diagnostic figures (default: production "
+             "figures/ttft_formula).",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+    global OUTPUT_DIR, FIGURE_DIR, MODEL_DIR
+    OUTPUT_DIR = args.output_dir or DEFAULT_OUTPUT_DIR
+    FIGURE_DIR = args.figure_dir or DEFAULT_FIGURE_DIR
+    MODEL_DIR = args.model_dir or DEFAULT_MODEL_DIR
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
     MODEL_DIR.mkdir(parents=True, exist_ok=True)

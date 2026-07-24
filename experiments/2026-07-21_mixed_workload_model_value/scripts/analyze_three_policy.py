@@ -29,6 +29,16 @@ COMPONENTS = [
     ("Compute / prefill", "#31866f"),
     ("RTT / other comm", "#4f83c2"),
 ]
+POLICY_COLORS = {
+    "KV migrate": "#4c78a8",
+    "Multi no model": "#f58518",
+    "Multi learned": "#2f8a62",
+}
+REDIRECT_POPULATIONS = [
+    ("All requests", None),
+    ("Redirected only", 1),
+    ("Not redirected only", 0),
+]
 
 
 def load_frames():
@@ -170,6 +180,88 @@ def prediction_summary(frames):
     }])
 
 
+def make_gpu_utilization_outputs():
+    rows = []
+    for condition_dir in sorted(RESULTS.iterdir()):
+        if not condition_dir.is_dir():
+            continue
+        match = re.fullmatch(r"mixed_rate(\d+p?\d*)_seed(\d+)", condition_dir.name)
+        if match is None:
+            continue
+        rate = float(match.group(1).replace("p", "."))
+        seed = int(match.group(2))
+        for policy, policy_dir in POLICIES.items():
+            path = condition_dir / policy_dir / "gpus.csv"
+            if not path.exists():
+                continue
+            frame = pd.read_csv(path)
+            if "utilization_pct" not in frame.columns:
+                continue
+            for row in frame.itertuples(index=False):
+                rows.append({
+                    "condition": condition_dir.name,
+                    "rate": rate,
+                    "seed": seed,
+                    "policy": policy,
+                    "gpu_id": row.gpu_id,
+                    "instance_id": row.instance_id,
+                    "busy_time_ns": row.busy_time_ns,
+                    "idle_time_ns": row.idle_time_ns,
+                    "observation_time_ns": row.observation_time_ns,
+                    "utilization_pct": row.utilization_pct,
+                    "completed_batch_count": row.completed_batch_count,
+                    "request_count": row.request_count,
+                    "prompt_tokens_processed": row.prompt_tokens_processed,
+                    "output_tokens_generated": row.output_tokens_generated,
+                })
+    if not rows:
+        print("GPU utilization fields are unavailable; rerun simulations with the updated simulator.")
+        return
+
+    detail = pd.DataFrame(rows)
+    detail.to_csv(ANALYSIS / "gpu_utilization_by_run_gpu.csv", index=False)
+    summary = detail.groupby(["condition", "rate", "seed", "policy"], as_index=False).agg(
+        mean_utilization_pct=("utilization_pct", "mean"),
+        min_utilization_pct=("utilization_pct", "min"),
+        max_utilization_pct=("utilization_pct", "max"),
+        std_utilization_pct=("utilization_pct", "std"),
+        total_busy_time_ns=("busy_time_ns", "sum"),
+        total_requests=("request_count", "sum"),
+    )
+    summary["cv_utilization"] = (
+        summary.std_utilization_pct / summary.mean_utilization_pct
+    ).fillna(0.0)
+    summary.to_csv(ANALYSIS / "gpu_utilization_summary.csv", index=False)
+
+    colors = {
+        "KV migrate": "#4c78a8",
+        "Multi no model": "#f58518",
+        "Multi learned": "#2f8a62",
+    }
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    for axis, metric, title in (
+        (axes[0], "mean_utilization_pct", "Mean GPU utilization"),
+        (axes[1], "cv_utilization", "GPU utilization imbalance"),
+    ):
+        pooled = summary.groupby(["rate", "policy"])[metric].mean().unstack()
+        pooled[list(POLICIES)].plot.bar(
+            ax=axis, color=[colors[policy] for policy in POLICIES]
+        )
+        axis.set_title(title)
+        axis.set_xlabel("Average request rate (rps)")
+        axis.tick_params(axis="x", rotation=0)
+        axis.set_ylabel("%" if metric == "mean_utilization_pct" else "coefficient of variation")
+        axis.grid(axis="y", color="#d9d2c8", linewidth=0.8)
+        axis.set_axisbelow(True)
+        if axis is axes[0]:
+            axis.get_legend().remove()
+    axes[1].legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(FIGURES / "gpu_utilization_and_balance.png", dpi=180,
+                bbox_inches="tight", facecolor="#faf8f4")
+    plt.close(fig)
+
+
 def ttft_breakdown(frame):
     communication = frame.communication_latency_ns.mean() / 1e6
     transfer = frame.kv_migration_latency_ns.mean() / 1e6
@@ -189,15 +281,78 @@ def ttft_breakdown(frame):
     }
 
 
-def make_ttft_breakdown_figures(frames):
-    rows = []
-    rates = sorted({frame.rate.iloc[0] for frame in frames.values()})
+def plot_ttft_breakdown(pooled, title, output_path, row_labels, rows,
+                        policy_order=None):
+    policy_order = list(POLICIES) if policy_order is None else policy_order
     populations = (
         ("All requests", None),
         ("Redirected only", 1),
         ("Not redirected only", 0),
     )
-    for rate in rates:
+    breakdowns = {}
+    for population, rerouted in populations:
+        for policy, frame in pooled.items():
+            selected = frame if rerouted is None else frame[frame.rerouted.eq(rerouted)]
+            if selected.empty:
+                continue
+            values = ttft_breakdown(selected)
+            breakdowns[population, policy] = values
+            rows.append({
+                **row_labels,
+                "population": population,
+                "policy": policy,
+                "request_count": len(selected),
+                **values,
+            })
+
+    maximum = max(values["Total"] for values in breakdowns.values())
+    fig, axes = plt.subplots(1, 3, figsize=(21, 7.5), sharex=True)
+    positions = np.arange(len(policy_order))
+    for axis, (population, _) in zip(axes, populations):
+        left = np.zeros(len(policy_order))
+        for component, color in COMPONENTS:
+            widths = np.array([
+                breakdowns.get((population, policy), {}).get(component, 0.0)
+                for policy in policy_order
+            ])
+            axis.barh(
+                positions, widths, left=left, height=0.58, color=color,
+                edgecolor="#faf8f4", linewidth=2, label=component,
+            )
+            left += widths
+        for position, policy in enumerate(policy_order):
+            key = population, policy
+            if key not in breakdowns:
+                axis.text(maximum * 0.02, position, "no requests", va="center",
+                          color="#77736d")
+                continue
+            total = breakdowns[key]["Total"]
+            count = len(pooled[policy]) if population == "All requests" else int(
+                pooled[policy].rerouted.eq(1 if population == "Redirected only" else 0).sum()
+            )
+            axis.text(total + maximum * 0.015, position,
+                      f"{total:.0f} ms\n(n={count})", va="center",
+                      fontsize=9, fontweight="bold")
+        axis.set_yticks(positions, policy_order)
+        axis.invert_yaxis()
+        axis.set_xlim(0, maximum * 1.24)
+        axis.set_title(population)
+        axis.grid(axis="x", color="#d9d2c8", linewidth=0.8)
+        axis.set_axisbelow(True)
+        axis.spines[["top", "right", "left"]].set_visible(False)
+    axes[1].set_xlabel("mean E2E TTFT components (ms)")
+    fig.suptitle(title, fontsize=18)
+    handles, labels = axes[-1].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=len(COMPONENTS),
+               frameon=False)
+    fig.tight_layout(rect=(0, 0.07, 1, 0.94))
+    fig.savefig(output_path, dpi=180, bbox_inches="tight", facecolor="#faf8f4")
+    plt.close(fig)
+
+
+def make_ttft_breakdown_figures(frames):
+    pooled_rows = []
+    for rate in sorted({frame.rate.iloc[0] for frame in frames.values()}):
         pooled = {
             policy: pd.concat([
                 frame for (_, label), frame in frames.items()
@@ -205,84 +360,152 @@ def make_ttft_breakdown_figures(frames):
             ])
             for policy in POLICIES
         }
-        breakdowns = {}
-        for population, rerouted in populations:
-            for policy, frame in pooled.items():
-                selected = frame if rerouted is None else frame[frame.rerouted.eq(rerouted)]
-                if selected.empty:
-                    continue
-                values = ttft_breakdown(selected)
-                breakdowns[population, policy] = values
-                rows.append({
-                    "rate": rate,
-                    "population": population,
-                    "policy": policy,
-                    "request_count": len(selected),
-                    **values,
-                })
-
-        maximum = max(values["Total"] for values in breakdowns.values())
-        fig, axes = plt.subplots(1, 3, figsize=(21, 7.5), sharex=True)
-        positions = np.arange(len(POLICIES))
-        for axis, (population, _) in zip(axes, populations):
-            left = np.zeros(len(POLICIES))
-            for component, color in COMPONENTS:
-                widths = np.array([
-                    breakdowns.get((population, policy), {}).get(component, 0.0)
-                    for policy in POLICIES
-                ])
-                axis.barh(
-                    positions, widths, left=left, height=0.58, color=color,
-                    edgecolor="#faf8f4", linewidth=2, label=component,
-                )
-                left += widths
-            for position, policy in enumerate(POLICIES):
-                key = population, policy
-                if key not in breakdowns:
-                    axis.text(maximum * 0.02, position, "no requests", va="center",
-                              color="#77736d")
-                    continue
-                total = breakdowns[key]["Total"]
-                count = len(pooled[policy]) if population == "All requests" else int(
-                    pooled[policy].rerouted.eq(1 if population == "Redirected only" else 0).sum()
-                )
-                axis.text(total + maximum * 0.015, position,
-                          f"{total:.0f} ms\n(n={count})", va="center",
-                          fontsize=9, fontweight="bold")
-            axis.set_yticks(positions, list(POLICIES))
-            axis.invert_yaxis()
-            axis.set_xlim(0, maximum * 1.24)
-            axis.set_title(population)
-            axis.grid(axis="x", color="#d9d2c8", linewidth=0.8)
-            axis.set_axisbelow(True)
-            axis.spines[["top", "right", "left"]].set_visible(False)
-        axes[1].set_xlabel("mean E2E TTFT components (ms)")
-        fig.suptitle(
-            f"Mixed workload / {rate:g} rps / 3 seeds: mean E2E TTFT breakdown by redirect status",
-            fontsize=18,
-        )
-        handles, labels = axes[-1].get_legend_handles_labels()
-        fig.legend(handles, labels, loc="lower center", ncol=len(COMPONENTS),
-                   frameon=False)
-        fig.tight_layout(rect=(0, 0.07, 1, 0.94))
         rate_label = str(rate).replace(".", "p")
-        fig.savefig(
-            FIGURES / f"ttft_breakdown_rate{rate_label}.png", dpi=180,
-            bbox_inches="tight", facecolor="#faf8f4",
+        plot_ttft_breakdown(
+            pooled,
+            f"Mixed workload / {rate:g} rps / 3 seeds: mean E2E TTFT breakdown by redirect status",
+            FIGURES / f"ttft_breakdown_rate{rate_label}.png",
+            {"rate": rate},
+            pooled_rows,
         )
-        plt.close(fig)
-    pd.DataFrame(rows).to_csv(
+    pd.DataFrame(pooled_rows).to_csv(
         ANALYSIS / "ttft_breakdown_by_redirect_status.csv", index=False
+    )
+
+    workload_rows = []
+    workload_figure_dir = FIGURES / "ttft_breakdown_by_workload"
+    workload_figure_dir.mkdir(parents=True, exist_ok=True)
+    for condition in sorted({condition for condition, _ in frames}):
+        selected = {policy: frames[condition, policy] for policy in POLICIES}
+        rate = next(iter(selected.values())).rate.iloc[0]
+        seed = next(iter(selected.values())).seed.iloc[0]
+        plot_ttft_breakdown(
+            selected,
+            f"{condition}: mean E2E TTFT breakdown by redirect status",
+            workload_figure_dir / f"{condition}.png",
+            {"condition": condition, "rate": rate, "seed": seed},
+            workload_rows,
+        )
+    pd.DataFrame(workload_rows).to_csv(
+        ANALYSIS / "ttft_breakdown_by_workload.csv", index=False
+    )
+
+    two_policy_order = ["KV migrate", "Multi learned"]
+    two_policy_rows = []
+    two_policy_figure_dir = FIGURES / "ttft_breakdown_kv_vs_learned"
+    two_policy_figure_dir.mkdir(parents=True, exist_ok=True)
+    for rate in sorted({frame.rate.iloc[0] for frame in frames.values()}):
+        pooled = {
+            policy: pd.concat([
+                frame for (_, label), frame in frames.items()
+                if label == policy and frame.rate.iloc[0] == rate
+            ])
+            for policy in two_policy_order
+        }
+        rate_label = str(rate).replace(".", "p")
+        plot_ttft_breakdown(
+            pooled,
+            f"KV migrate vs Multi learned / {rate:g} rps / 3 seeds: mean E2E TTFT breakdown",
+            two_policy_figure_dir / f"pooled_rate{rate_label}.png",
+            {"scope": "pooled_rate", "condition": "", "rate": rate, "seed": ""},
+            two_policy_rows,
+            two_policy_order,
+        )
+    for condition in sorted({condition for condition, _ in frames}):
+        selected = {
+            policy: frames[condition, policy] for policy in two_policy_order
+        }
+        rate = next(iter(selected.values())).rate.iloc[0]
+        seed = next(iter(selected.values())).seed.iloc[0]
+        plot_ttft_breakdown(
+            selected,
+            f"{condition}: KV migrate vs Multi learned TTFT breakdown",
+            two_policy_figure_dir / f"{condition}.png",
+            {
+                "scope": "workload", "condition": condition,
+                "rate": rate, "seed": seed,
+            },
+            two_policy_rows,
+            two_policy_order,
+        )
+    pd.DataFrame(two_policy_rows).to_csv(
+        ANALYSIS / "ttft_breakdown_kv_vs_learned.csv", index=False
+    )
+
+
+def plot_ttft_cdf(selected, title, output_path, metadata, quantile_rows):
+    fig, axes = plt.subplots(1, 3, figsize=(19, 6), sharex=True, sharey=True)
+    positive_values = []
+    for frame in selected.values():
+        positive_values.extend(frame.loc[frame.ttft_ms.gt(0), "ttft_ms"].tolist())
+    lower = max(1.0, min(positive_values) * 0.85)
+    upper = max(positive_values) * 1.15
+    for axis, (population, rerouted) in zip(axes, REDIRECT_POPULATIONS):
+        for policy in POLICIES:
+            frame = selected[policy]
+            subset = frame if rerouted is None else frame[frame.rerouted.eq(rerouted)]
+            values = np.sort(subset.ttft_ms.to_numpy())
+            if not len(values):
+                continue
+            probability = np.arange(1, len(values) + 1) / len(values)
+            axis.step(
+                values,
+                probability,
+                where="post",
+                linewidth=2.2,
+                color=POLICY_COLORS[policy],
+                label=f"{policy} (n={len(values)})",
+            )
+            quantiles = np.quantile(values, [0.50, 0.90, 0.95, 0.99])
+            quantile_rows.append({
+                **metadata,
+                "population": population,
+                "policy": policy,
+                "requests": len(values),
+                "p50_ms": quantiles[0],
+                "p90_ms": quantiles[1],
+                "p95_ms": quantiles[2],
+                "p99_ms": quantiles[3],
+                "max_ms": values[-1],
+            })
+        axis.set_xscale("log")
+        axis.set_xlim(lower, upper)
+        axis.set_ylim(0, 1.01)
+        axis.set_title(population)
+        axis.set_xlabel("E2E TTFT (ms, log scale)")
+        axis.grid(color="#d9d2c8", linewidth=0.8, which="both")
+        axis.set_axisbelow(True)
+        axis.legend(loc="lower right", fontsize=8, frameon=False)
+    axes[0].set_ylabel("CDF")
+    fig.suptitle(title, fontsize=18)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.savefig(output_path, dpi=180, bbox_inches="tight", facecolor="#faf8f4")
+    plt.close(fig)
+
+
+def make_ttft_cdf_figures(frames):
+    quantile_rows = []
+    output_dir = FIGURES / "ttft_cdf_by_workload"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for condition in sorted({condition for condition, _ in frames}):
+        selected = {policy: frames[condition, policy] for policy in POLICIES}
+        rate = next(iter(selected.values())).rate.iloc[0]
+        seed = next(iter(selected.values())).seed.iloc[0]
+        plot_ttft_cdf(
+            selected,
+            f"{condition}: E2E TTFT CDF by redirect status",
+            output_dir / f"{condition}.png",
+            {"condition": condition, "rate": rate, "seed": seed},
+            quantile_rows,
+        )
+    pd.DataFrame(quantile_rows).to_csv(
+        ANALYSIS / "ttft_cdf_by_workload_quantiles.csv", index=False
     )
 
 
 def make_figures(run_summary, pooled_summary, subgroup_summary):
     FIGURES.mkdir(parents=True, exist_ok=True)
-    colors = {
-        "KV migrate": "#4c78a8",
-        "Multi no model": "#f58518",
-        "Multi learned": "#2f8a62",
-    }
+    colors = POLICY_COLORS
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.8))
     for ax, metric, title in zip(
         axes,
@@ -366,6 +589,8 @@ def main():
     predictions.to_csv(ANALYSIS / "learned_redirect_prediction_accuracy.csv", index=False)
     make_figures(run_summary, pooled_summary, subgroup_summary)
     make_ttft_breakdown_figures(frames)
+    make_ttft_cdf_figures(frames)
+    make_gpu_utilization_outputs()
     print(pooled_summary.to_string(index=False))
     print(predictions.to_string(index=False))
 

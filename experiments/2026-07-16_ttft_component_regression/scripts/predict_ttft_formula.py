@@ -28,7 +28,18 @@ def main():
     )
     positive_route = np.expm1(log_route)
     route = probability * positive_route
-    scheduler = np.maximum(0, model["scheduler"].predict(transformed))
+    # See MODEL_ITERATION_HISTORY.md item 12/13 (experiments/
+    # 2026-07-21-add_gpu_utilization/): the scheduler model now predicts
+    # log1p(scheduler_ms); recover ms via clip-then-expm1 instead of the
+    # old max(0, raw_ms), which used to collapse many candidates to
+    # identical predictions whenever the raw ms output went negative.
+    if "scheduler_log_bounds" in model:
+        scheduler_log = np.clip(
+            model["scheduler"].predict(transformed), *model["scheduler_log_bounds"]
+        )
+        scheduler = np.expm1(scheduler_log)
+    else:
+        scheduler = np.maximum(0, model["scheduler"].predict(transformed))
     compute = np.maximum(
         0, model["compute"].predict(frame[model["compute_features"]])
     )

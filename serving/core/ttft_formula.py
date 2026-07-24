@@ -55,6 +55,15 @@ class OfflineTtftFormula:
         self.scheduler_coefficients = _read_coefficients(
             self.artifact_dir / 'scheduler_ridge_coefficients.csv'
         )
+        scheduler_meta_path = self.artifact_dir / 'scheduler_ridge_meta.json'
+        if scheduler_meta_path.exists():
+            self.scheduler_log_bounds = tuple(
+                json.loads(scheduler_meta_path.read_text())['log1p_bounds']
+            )
+        else:
+            # Older artifact directories predict ms directly (pre item-12
+            # log1p switch); fall back to the historical max(0, raw) clip.
+            self.scheduler_log_bounds = None
         self.compute_coefficients = _read_coefficients(
             self.artifact_dir / 'compute_linear_coefficients.csv'
         )
@@ -113,9 +122,24 @@ class OfflineTtftFormula:
             0.0, float(upper.get('residual_ms', 0.0))
         )
         route_ms = route_probability * route_positive_ms
-        scheduler_ms = max(0.0, self._linear(
+        scheduler_linear = self._linear(
             self.scheduler_coefficients, transformed, 'intercept_ms'
-        ))
+        )
+        if self.scheduler_log_bounds is not None:
+            # scheduler_linear predicts log1p(scheduler_ms); expm1 recovers
+            # a strictly non-negative, smoothly-varying ms value with no
+            # information-destroying clip (see MODEL_ITERATION_HISTORY.md
+            # item 12 in experiments/2026-07-21-add_gpu_utilization/ for why
+            # the previous max(0.0, raw_ms) clip collapsed many same-request
+            # candidates to identical total-TTFT predictions).
+            log_lower, log_upper = self.scheduler_log_bounds
+            scheduler_ms = math.expm1(
+                min(max(scheduler_linear, log_lower), log_upper)
+            )
+            scheduler_raw_ms = scheduler_ms
+        else:
+            scheduler_raw_ms = scheduler_linear
+            scheduler_ms = max(0.0, scheduler_raw_ms)
         compute_ms = max(
             0.0,
             self.compute_coefficients['intercept_ms']
@@ -129,6 +153,7 @@ class OfflineTtftFormula:
             'route_upper_ms': route_upper_ms,
             'route_ms': route_ms,
             'scheduler_ms': scheduler_ms,
+            'scheduler_raw_ms': scheduler_raw_ms,
             'compute_ms': compute_ms,
             'ttft_ms': route_ms + scheduler_ms + compute_ms,
         }

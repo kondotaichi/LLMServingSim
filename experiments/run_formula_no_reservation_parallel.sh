@@ -8,8 +8,6 @@ cd "${REPO_ROOT}"
 
 POLICY="NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE"
 RESULT_NAME="NEAREST_CAPACITY_ONESHOT_FORMULA_NO_RESERVATION_M200MS_D1S_MODEL20260716"
-LOG_DIR="experiments/logs"
-mkdir -p "${LOG_DIR}"
 
 run_condition() {
   local experiment_dir="$1"
@@ -17,7 +15,7 @@ run_condition() {
   local run_id="$3"
   local output_dir="${experiment_dir}/results/${RESULT_NAME}"
 
-  mkdir -p "${output_dir}"
+  mkdir -p "${output_dir}" "${experiment_dir}/logs"
 
   python -m serving \
     --cluster-config configs/cluster/ten_node_rtx4090_apn.json \
@@ -55,14 +53,14 @@ run_condition \
   "experiments/2026-07-14_prompt6000_90s_three_policy_良結果" \
   "workloads/generated/cell_apn/prompt6000_90s/sharegpt_300_prompt6000_reuse50_90s.jsonl" \
   "prompt6000-reuse50-90s-formula-no-reservation-m200ms-d1s" \
-  > "${LOG_DIR}/formula_no_reservation_prompt6000_90s.log" 2>&1 &
+  > "experiments/2026-07-14_prompt6000_90s_three_policy_良結果/logs/formula_no_reservation.log" 2>&1 &
 PID_PROMPT=$!
 
 run_condition \
   "experiments/2026-07-16_input10000_reuse05_180s_three_policy_良結果" \
   "experiments/2026-07-16_input10000_reuse05_180s_three_policy_良結果/workloads/input10000_reuse05_180s.jsonl" \
   "input10000-reuse05-180s-formula-no-reservation-m200ms-d1s" \
-  > "${LOG_DIR}/formula_no_reservation_input10000_180s.log" 2>&1 &
+  > "experiments/2026-07-16_input10000_reuse05_180s_three_policy_良結果/logs/formula_no_reservation.log" 2>&1 &
 PID_INPUT=$!
 
 STATUS_PROMPT=0

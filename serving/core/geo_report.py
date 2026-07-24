@@ -79,6 +79,36 @@ def _mean_ms(values_ns):
     return float(np.mean(values_ns)) / 1_000_000.0
 
 
+def _interval_union_ns(intervals, start_ns, end_ns):
+    """Return covered time after clipping and merging wall-clock intervals."""
+    clipped = sorted(
+        (max(start_ns, int(start)), min(end_ns, int(end)))
+        for start, end in intervals if end > start and end > start_ns and start < end_ns
+    )
+    if not clipped:
+        return 0
+    total = 0
+    merged_start, merged_end = clipped[0]
+    for start, end in clipped[1:]:
+        if start <= merged_end:
+            merged_end = max(merged_end, end)
+        else:
+            total += merged_end - merged_start
+            merged_start, merged_end = start, end
+    return total + merged_end - merged_start
+
+
+def _workload_observation_window(schedulers):
+    completed = [req for sched in schedulers for req in sched.done]
+    starts = [req.request_send_time_ns for req in completed
+              if req.request_send_time_ns is not None and req.request_send_time_ns >= 0]
+    ends = [req.request_end_time_ns for req in completed
+            if req.request_end_time_ns is not None and req.request_end_time_ns >= 0]
+    start_ns = min(starts) if starts else 0
+    end_ns = max(ends) if ends else start_ns
+    return start_ns, end_ns
+
+
 def aggregate_users(schedulers, users_static):
     """Build one row per user (spec section 25).
 
@@ -152,6 +182,8 @@ def aggregate_users(schedulers, users_static):
 def aggregate_gpus(schedulers, gpus_static):
     """Build one row per GPU/instance (spec section 26)."""
     by_instance = {sched.instance_id: sched for sched in schedulers}
+    observation_start_ns, observation_end_ns = _workload_observation_window(schedulers)
+    observation_time_ns = max(0, observation_end_ns - observation_start_ns)
     gpu_ids = set(gpus_static.keys()) if gpus_static is not None else set(by_instance.keys())
     gpu_ids |= set(by_instance.keys())
 
@@ -163,6 +195,15 @@ def aggregate_gpus(schedulers, gpus_static):
         e2e = [r.e2e_ttft_ns for r in reqs if r.e2e_ttft_ns >= 0]
         mean, p50, p95, p99 = _percentiles_ms(e2e)
         assigned_user_count = len({r.user_id for r in reqs if r.user_id is not None})
+        intervals = sched.batch_busy_intervals_ns if sched is not None else []
+        busy_time_ns = _interval_union_ns(
+            intervals, observation_start_ns, observation_end_ns
+        )
+        idle_time_ns = max(0, observation_time_ns - busy_time_ns)
+        utilization_pct = (
+            busy_time_ns / observation_time_ns * 100.0
+            if observation_time_ns > 0 else 0.0
+        )
         rows.append({
             'gpu_id': gid,
             'instance_id': static.get('instance_id', gid),
@@ -180,7 +221,50 @@ def aggregate_gpus(schedulers, gpus_static):
             'max_running_requests': len(reqs),
             'prompt_tokens_processed': sum(r.input for r in reqs),
             'output_tokens_generated': sum(r.output - r.input for r in reqs),
+            'observation_start_ns': observation_start_ns,
+            'observation_end_ns': observation_end_ns,
+            'observation_time_ns': observation_time_ns,
+            'busy_time_ns': busy_time_ns,
+            'idle_time_ns': idle_time_ns,
+            'utilization_pct': utilization_pct,
+            'completed_batch_count': len(intervals),
         })
+    return rows
+
+
+def aggregate_gpu_utilization_timeseries(schedulers, gpus_static, window_ns):
+    """Build fixed-window batch-busy utilization rows for each GPU/instance."""
+    if window_ns <= 0:
+        raise ValueError("GPU utilization window must be positive")
+    by_instance = {sched.instance_id: sched for sched in schedulers}
+    gpu_ids = set(gpus_static.keys()) if gpus_static is not None else set(by_instance.keys())
+    gpu_ids |= set(by_instance.keys())
+    observation_start_ns, observation_end_ns = _workload_observation_window(schedulers)
+    rows = []
+    window_index = 0
+    start_ns = observation_start_ns
+    while start_ns < observation_end_ns:
+        end_ns = min(start_ns + window_ns, observation_end_ns)
+        duration_ns = end_ns - start_ns
+        for gid in sorted(gpu_ids):
+            static = (gpus_static or {}).get(gid, {})
+            sched = by_instance.get(static.get('instance_id', gid))
+            intervals = sched.batch_busy_intervals_ns if sched is not None else []
+            busy_time_ns = _interval_union_ns(intervals, start_ns, end_ns)
+            rows.append({
+                'window_index': window_index,
+                'window_start_ns': start_ns,
+                'window_end_ns': end_ns,
+                'window_duration_ns': duration_ns,
+                'time_since_start_s': (start_ns - observation_start_ns) / 1_000_000_000.0,
+                'gpu_id': gid,
+                'instance_id': static.get('instance_id', gid),
+                'busy_time_ns': busy_time_ns,
+                'idle_time_ns': duration_ns - busy_time_ns,
+                'utilization_pct': busy_time_ns / duration_ns * 100.0,
+            })
+        window_index += 1
+        start_ns = end_ns
     return rows
 
 
@@ -215,6 +299,15 @@ _GPU_FIELDS = [
     'mean_queueing_before_ttft_ms', 'mean_prefill_service_ms',
     'max_waiting_requests', 'max_running_requests',
     'prompt_tokens_processed', 'output_tokens_generated',
+    'observation_start_ns', 'observation_end_ns', 'observation_time_ns',
+    'busy_time_ns', 'idle_time_ns', 'utilization_pct',
+    'completed_batch_count',
+]
+
+_GPU_UTILIZATION_TIMESERIES_FIELDS = [
+    'window_index', 'window_start_ns', 'window_end_ns', 'window_duration_ns',
+    'time_since_start_s', 'gpu_id', 'instance_id', 'busy_time_ns',
+    'idle_time_ns', 'utilization_pct',
 ]
 
 
@@ -224,6 +317,10 @@ def write_user_csv(path, rows):
 
 def write_gpu_csv(path, rows):
     _write_csv(path, rows, _GPU_FIELDS)
+
+
+def write_gpu_utilization_timeseries_csv(path, rows):
+    _write_csv(path, rows, _GPU_UTILIZATION_TIMESERIES_FIELDS)
 
 
 def write_metadata(path, args, cluster, num_users_static, num_gpus_static):
@@ -256,6 +353,7 @@ def write_metadata(path, args, cluster, num_users_static, num_gpus_static):
             "requests": args.output,
             "users": args.geographic_user_output,
             "gpus": args.geographic_gpu_output,
+            "gpu_utilization_timeseries": args.gpu_utilization_timeseries_output,
         },
         "git_commit_hash": git_hash,
         "network_model": "fixed_throughput_distance_proportional",
@@ -275,6 +373,12 @@ def write_metadata(path, args, cluster, num_users_static, num_gpus_static):
             "attributed to every request in it (not divided), representing each request's own wall-clock "
             "experience rather than an exclusive GPU-time allocation"
         ),
+        "gpu_utilization_definition": (
+            "union of completed real-batch wall-clock intervals divided by the global workload observation "
+            "window from the earliest request send to the latest request completion; overlapping pipeline "
+            "batch intervals are merged, and dummy DP synchronization batches are excluded"
+        ),
+        "gpu_utilization_window_ns": args.gpu_utilization_window_ns,
         "decode_definition": (
             "decode_after_ttft_ns = decode_queueing_ns + decode_active_ns, measured from first-token-ready to "
             "request completion; never added into e2e_ttft_ns"

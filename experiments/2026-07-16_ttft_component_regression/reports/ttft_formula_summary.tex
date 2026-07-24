@@ -1,0 +1,182 @@
+% Compile with: lualatex ttft_formula_summary.tex
+\documentclass[a4paper,11pt]{ltjsarticle}
+
+\usepackage[margin=24mm]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{Request送信時情報によるTTFT予測式の要約}
+\author{LLMServingSim Experiment 2026-07-16}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{目的}
+
+Request送信時点で取得可能なprompt、prefix cache、到着負荷、GPUのqueue・KV容量、
+routing policyを入力として、end-to-endのTime to First Token（TTFT）を予測する。
+TTFTはRouter待ち、Scheduler待ち、Prefill計算、通信時間へ分解する。
+
+\section{TTFTの基本式}
+
+\begin{equation}
+\boxed{
+\widehat{TTFT}
+=
+\hat{t}_{\mathrm{route}}
++\hat{t}_{\mathrm{sched}}
++\hat{t}_{\mathrm{compute}}
++\hat{t}_{\mathrm{comm}}
+}
+\end{equation}
+
+本データでは通信時間が小さく、request送信後のredirect判断で確定するため、point
+predictionでは$\hat{t}_{\mathrm{comm}}=0$とする。
+
+\section{各componentの簡易式}
+
+\subsection{Router queue}
+
+Router待ちは、queueが発生する確率と、発生した場合の待ち時間の積で表す。
+
+\begin{align}
+p_{\mathrm{route}}
+&=
+\sigma\!\left(
+\beta_0+\boldsymbol{\beta}^{\mathsf T}\boldsymbol{z}
+\right), \\
+\hat{t}_{\mathrm{route},+}
+&=
+\exp\!\left[
+\operatorname{clip}\!\left(g(\boldsymbol{z}),a,b\right)
+\right]-1, \\
+\boxed{
+\hat{t}_{\mathrm{route}}
+&=p_{\mathrm{route}}\hat{t}_{\mathrm{route},+}
+}.
+\end{align}
+
+ここで$\sigma$はlogistic関数、$\boldsymbol{z}$は標準化済み入力、$g$は深さ2の
+回帰木100本からなるpiecewise predictorである。Router queueの発生には、GPUの
+capacity pressure、予測KV占有量、空きKV容量、running request数が強く影響する。
+
+\subsection{Scheduler queue}
+
+\begin{equation}
+\boxed{
+\hat{t}_{\mathrm{sched}}
+=
+\max\!\left(
+0,\gamma_0+\boldsymbol{\gamma}^{\mathsf T}\boldsymbol{z}
+\right)
+}
+\end{equation}
+
+Scheduler待ちには、対象GPUのwaiting request数、直近1秒の到着数、prefix cache量が
+主に影響する。
+
+\subsection{Compute / prefill}
+
+Compute時間はinput token数$I$とhome GPU上のcached prefix token数$C$から求める。
+
+\begin{equation}
+\boxed{
+\hat{t}_{\mathrm{compute}}
+=
+\max\!\left(
+0,
+-96.717513
++0.1440215 I
+-0.1190117 C
+\right)
+\quad [\mathrm{ms}]
+}
+\end{equation}
+
+Input tokenが増えるほどprefill計算量が増え、cached prefixが増えるほど再計算量が減る。
+
+\section{最終的な簡易TTFT式}
+
+以上をまとめると、point predictionは次式になる。
+
+\begin{equation}
+\boxed{
+\begin{aligned}
+\widehat{TTFT}
+={}&
+\sigma\!\left(
+\beta_0+\boldsymbol{\beta}^{\mathsf T}\boldsymbol{z}
+\right)
+\left\{
+\exp\!\left[
+\operatorname{clip}\!\left(g(\boldsymbol{z}),a,b\right)
+\right]-1
+\right\} \\
+&+
+\max\!\left(
+0,\gamma_0+\boldsymbol{\gamma}^{\mathsf T}\boldsymbol{z}
+\right) \\
+&+
+\max\!\left(
+0,-96.717513+0.1440215I-0.1190117C
+\right).
+\end{aligned}
+}
+\end{equation}
+
+実装で使用する定数は、
+
+\begin{equation}
+\beta_0=-14.013232,
+\qquad
+\gamma_0=60.427288\ \mathrm{ms},
+\qquad
+(a,b)=(0.001642,10.878924)
+\end{equation}
+
+である。$\boldsymbol{\beta}$、$\boldsymbol{\gamma}$、標準化用の平均・scale、回帰木の
+全係数はCSVおよびJSON artifactに保存されている。
+
+\section{主要入力の意味}
+
+\begin{center}
+\begin{tabular}{lp{88mm}}
+\toprule
+入力群 & 意味 \\
+\midrule
+Request size & Input/output token数とcached prefix token数 \\
+Arrival load & 平均request rate、直近1秒・5秒のglobal/home到着数 \\
+Queue state & 対象GPUのwaiting request数とrunning request数 \\
+KV capacity & Required KV、予測active KV、available KV、capacity pressure \\
+Candidate state & 収容可能GPU数、全候補のqueue・KV状態の合計または最小・最大 \\
+Policy & Local待機、cold redirect、KV handoffのone-hot表現 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+特にRouter queueの中心的な要因は、送信時点でrequestをKV容量とsequence slotの両方に
+ついて収容できるGPUが存在するかどうかである。
+
+\section{評価結果と制約}
+
+13,500 requests、15 independent scenariosのleave-one-scenario-out評価では、TTFTの
+MAEは716.1\,ms、$R^2$は0.467であった。通常領域のcomputeとqueue発生判定は比較的
+良好だが、高負荷時の長いRouter waitを過小予測する。
+
+Routingの安全判定では、正値Router待ちへscenario-held-out residualの90 percentileを
+加えた上側予測も用意されている。
+
+\begin{equation}
+\hat{t}_{\mathrm{route,upper}}
+=
+\hat{t}_{\mathrm{route},+}
++10{,}311.69\ \mathrm{ms}
+\end{equation}
+
+この固定補正は長時間待機の見逃しを防ぐ一方、1秒程度のlocal待機上限と組み合わせると
+redirect判断をほぼ常時ONにする場合がある。したがって、point prediction、SLA上側予測、
+候補GPUランキングは目的別に分けて利用する必要がある。
+
+\end{document}

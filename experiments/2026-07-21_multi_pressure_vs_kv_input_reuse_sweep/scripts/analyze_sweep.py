@@ -19,6 +19,14 @@ REPORT = ROOT / "report.md"
 KV_POLICY = "NEAREST_MIGRATE_KV"
 MULTI_POLICY = "NEAREST_CAPACITY_MULTI_PRESSURE_FORMULA_KV_RESERVE"
 REUSE_VALUES = {"reuse00": 0.0, "reuse025": 0.25, "reuse05": 0.5}
+POLICY_LABELS = ["KV migrate", "Multi learned"]
+COMPONENTS = [
+    ("Router queue", "#c74b3a"),
+    ("Scheduler queue", "#e79b37"),
+    ("KV transfer", "#865bd6"),
+    ("Compute / prefill", "#31866f"),
+    ("RTT / other comm", "#4f83c2"),
+]
 
 
 def load_summary():
@@ -33,10 +41,10 @@ def load_summary():
         reuse = REUSE_VALUES[parts[1]]
         frames = {
             "KV migrate": pd.read_csv(condition_dir / KV_POLICY / "requests.csv").set_index("request id").sort_index(),
-            "Multi-pressure": pd.read_csv(condition_dir / MULTI_POLICY / "requests.csv").set_index("request id").sort_index(),
+            "Multi learned": pd.read_csv(condition_dir / MULTI_POLICY / "requests.csv").set_index("request id").sort_index(),
         }
         kv_ttft = frames["KV migrate"].e2e_ttft_ns / 1e6
-        multi_ttft = frames["Multi-pressure"].e2e_ttft_ns / 1e6
+        multi_ttft = frames["Multi learned"].e2e_ttft_ns / 1e6
         delta = multi_ttft - kv_ttft
         row = {
             "condition": condition,
@@ -58,7 +66,7 @@ def load_summary():
             "worse_requests": int(delta.gt(0.001).sum()),
             "same_requests": int(delta.abs().le(0.001).sum()),
             "kv_redirects": int(frames["KV migrate"].rerouted.sum()),
-            "multi_redirects": int(frames["Multi-pressure"].rerouted.sum()),
+            "multi_redirects": int(frames["Multi learned"].rerouted.sum()),
         }
         rows.append(row)
         for label, frame in frames.items():
@@ -78,6 +86,122 @@ def load_summary():
                 "other_ms": ttft.mean() - sum(values.values()),
             })
     return pd.DataFrame(rows).sort_values(["input_tokens", "reuse"]), pd.DataFrame(components)
+
+
+def breakdown(frame):
+    communication = frame.communication_latency_ns.mean() / 1e6
+    transfer = frame.kv_migration_latency_ns.mean() / 1e6
+    router_queue = (
+        frame.e2e_ttft_ns
+        - frame.prefill_service_ns
+        - frame.communication_latency_ns
+        - frame.queueing_before_ttft_ns
+    ).clip(lower=0).mean() / 1e6
+    return {
+        "Router queue": router_queue,
+        "Scheduler queue": frame.queueing_before_ttft_ns.mean() / 1e6,
+        "KV transfer": transfer,
+        "Compute / prefill": frame.prefill_service_ns.mean() / 1e6,
+        "RTT / other comm": max(0.0, communication - transfer),
+        "Total": frame.e2e_ttft_ns.mean() / 1e6,
+    }
+
+
+def make_workload_breakdown_figures():
+    output_dir = FIGURES / "ttft_breakdown_by_workload"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    cross_experiment_dir = (
+        ROOT.parent / "2026-07-21_mixed_workload_model_value" / "figures"
+        / "ttft_breakdown_kv_vs_learned" / "input_reuse_sweep"
+    )
+    cross_experiment_dir.mkdir(parents=True, exist_ok=True)
+    populations = (
+        ("All requests", None),
+        ("Redirected only", 1),
+        ("Not redirected only", 0),
+    )
+    rows = []
+    for condition_dir in sorted(RESULTS.iterdir()):
+        if not condition_dir.is_dir():
+            continue
+        condition = condition_dir.name
+        frames = {
+            "KV migrate": pd.read_csv(
+                condition_dir / KV_POLICY / "requests.csv"
+            ),
+            "Multi learned": pd.read_csv(
+                condition_dir / MULTI_POLICY / "requests.csv"
+            ),
+        }
+        values = {}
+        for population, rerouted in populations:
+            for policy, frame in frames.items():
+                selected = frame if rerouted is None else frame[frame.rerouted.eq(rerouted)]
+                if selected.empty:
+                    continue
+                result = breakdown(selected)
+                values[population, policy] = result
+                rows.append({
+                    "condition": condition,
+                    "population": population,
+                    "policy": policy,
+                    "request_count": len(selected),
+                    **result,
+                })
+
+        maximum = max(result["Total"] for result in values.values())
+        positions = np.arange(len(POLICY_LABELS))
+        fig, axes = plt.subplots(1, 3, figsize=(21, 7.5), sharex=True)
+        for axis, (population, rerouted) in zip(axes, populations):
+            left = np.zeros(len(POLICY_LABELS))
+            for component, color in COMPONENTS:
+                widths = np.array([
+                    values.get((population, policy), {}).get(component, 0.0)
+                    for policy in POLICY_LABELS
+                ])
+                axis.barh(
+                    positions, widths, left=left, height=0.58, color=color,
+                    edgecolor="#faf8f4", linewidth=2, label=component,
+                )
+                left += widths
+            for position, policy in enumerate(POLICY_LABELS):
+                key = population, policy
+                if key not in values:
+                    axis.text(maximum * 0.02, position, "no requests", va="center",
+                              color="#77736d")
+                    continue
+                selected = frames[policy] if rerouted is None else frames[policy][
+                    frames[policy].rerouted.eq(rerouted)
+                ]
+                total = values[key]["Total"]
+                axis.text(
+                    total + maximum * 0.015, position,
+                    f"{total:.0f} ms\n(n={len(selected)})", va="center",
+                    fontsize=9, fontweight="bold",
+                )
+            axis.set_yticks(positions, POLICY_LABELS)
+            axis.invert_yaxis()
+            axis.set_xlim(0, maximum * 1.24)
+            axis.set_title(population)
+            axis.grid(axis="x", color="#d9d2c8", linewidth=0.8)
+            axis.set_axisbelow(True)
+            axis.spines[["top", "right", "left"]].set_visible(False)
+        axes[1].set_xlabel("mean E2E TTFT components (ms)")
+        fig.suptitle(
+            f"{condition}: KV migrate vs Multi learned TTFT breakdown",
+            fontsize=18,
+        )
+        handles, labels = axes[-1].get_legend_handles_labels()
+        fig.legend(handles, labels, loc="lower center", ncol=len(COMPONENTS),
+                   frameon=False)
+        fig.tight_layout(rect=(0, 0.07, 1, 0.94))
+        for destination in (output_dir, cross_experiment_dir):
+            fig.savefig(destination / f"{condition}.png", dpi=180,
+                        bbox_inches="tight", facecolor="#faf8f4")
+        plt.close(fig)
+    pd.DataFrame(rows).to_csv(
+        ANALYSIS / "ttft_breakdown_by_workload.csv", index=False
+    )
 
 
 def make_figures(summary, components):
@@ -157,6 +281,7 @@ def main():
     summary.to_csv(ANALYSIS / "condition_summary.csv", index=False)
     components.to_csv(ANALYSIS / "mean_ttft_breakdown.csv", index=False)
     make_figures(summary, components)
+    make_workload_breakdown_figures()
     write_report(summary)
     print(summary.to_string(index=False))
 

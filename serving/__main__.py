@@ -204,6 +204,10 @@ def main():
     
     parser.add_argument('--cluster-config', type=str, default='configs/cluster/single_node_single_instance.json',
                         help='path to cluster config JSON defining node topology, instance layout, hardware, and memory hierarchy')
+    parser.add_argument('--pp-size', type=int, default=None,
+                        help='override pipeline-parallel degree for every logical instance. '
+                        'When omitted, use pp_size from the cluster config (defaulting to 1); '
+                        '--pp-size 2 assigns two GPUs to each instance while preserving its TP degree')
     parser.add_argument('--max-num-seqs', type=int, default=128,
                         help='maximum number of sequences in a batch (0 = unlimited)')
     parser.add_argument('--max-num-batched-tokens', type=int, default=2048,
@@ -399,6 +403,16 @@ def main():
     parser.add_argument('--geographic-gpu-output', type=str, default=None,
                         help='path for the per-GPU aggregate CSV (request counts, latency percentiles, peak '
                         'queue depth). Omit to skip')
+    parser.add_argument('--gpu-utilization-timeseries-output', type=str, default=None,
+                        help='path for fixed-window per-GPU batch-busy utilization CSV. Omit to skip')
+    parser.add_argument('--gpu-utilization-window-ns', type=int, default=1000000000,
+                        help='window width in ns for --gpu-utilization-timeseries-output (default: 1 second)')
+    parser.add_argument('--routing-candidate-output', type=str, default=None,
+                        help='path for one-row-per-candidate formula-routing diagnostics CSV. Omit to skip')
+    parser.add_argument('--counterfactual-request-id', type=int, default=None,
+                        help='diagnostic intervention: force this request to --counterfactual-target-instance-id')
+    parser.add_argument('--counterfactual-target-instance-id', type=int, default=None,
+                        help='diagnostic intervention target; must be admissible for the selected request')
     parser.add_argument('--geographic-metadata-output', type=str, default=None,
                         help='path for the geographic run metadata JSON (area/GPU/user config, definitions, git '
                         'commit hash). Omit to skip')
@@ -447,7 +461,7 @@ def main():
     # ---------------------------------- Extract cluster config -----------------------------------
     cluster = build_cluster_config(
         astra_sim, args.cluster_config, build_enable_local_offloading, build_enable_attn_offloading,
-        inputs_root=run_paths.inputs_root)
+        inputs_root=run_paths.inputs_root, pp_size_override=args.pp_size)
     num_nodes = cluster["num_nodes"]
     num_instances = cluster["num_instances"]
     instances = cluster["instances"]
@@ -604,7 +618,9 @@ def main():
                     oneshot_redirect_margin_ns=args.oneshot_redirect_margin_ns,
                     oneshot_max_local_wait_ns=args.oneshot_max_local_wait_ns,
                     enable_oneshot_target_reservation=args.enable_oneshot_target_reservation,
-                    ttft_formula_artifact_dir=args.ttft_formula_artifact_dir)
+                    ttft_formula_artifact_dir=args.ttft_formula_artifact_dir,
+                    counterfactual_request_id=args.counterfactual_request_id,
+                    counterfactual_target_instance_id=args.counterfactual_target_instance_id)
     # Power Modeling if enabled
     if power_modeling:
         power_model = PowerModel(power_configs)
@@ -664,7 +680,16 @@ def main():
         astra_args.append("--end-npu-ids="+end_npu_ids)
     if network_backend == 'ns3':
         astra_args.append("--logical-topology-configuration="+astra_sim+"/inputs/logical_topology/logical_8nodes_1D.json")
-    p = subprocess.Popen(astra_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    # Inherit stderr so ASTRA-Sim diagnostics follow the simulator's stderr
+    # redirection. Keeping an unread stderr=PIPE can deadlock long runs once
+    # the OS pipe buffer fills while the controller is blocked on stdout.
+    p = subprocess.Popen(
+        astra_args,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=None,
+        universal_newlines=True,
+    )
 
     # DP group synchronization: defer trace generation until all members have scheduled
     # dp_groups maps dp_group_name -> list of instance_ids
@@ -1169,8 +1194,14 @@ def main():
         for i in range(num_instances):
             schedulers[i].save_output(output_file, is_append=False if i == 0 else True)
 
+    if args.routing_candidate_output:
+        candidate_output = _cluster_config_path(args.routing_candidate_output)
+        router.save_candidate_diagnostics(candidate_output)
+        print(f"Saving routing candidate diagnostics to: {args.routing_candidate_output}")
+
     # --- Geographic Phase 1: per-user / per-GPU aggregation + metadata ---
-    if args.geographic_user_output or args.geographic_gpu_output or args.geographic_metadata_output:
+    if (args.geographic_user_output or args.geographic_gpu_output
+            or args.gpu_utilization_timeseries_output or args.geographic_metadata_output):
         from serving.core import geo_report
         users_static = geo_report.load_static_users(
             _cluster_config_path(args.geographic_users_csv) if args.geographic_users_csv else None)
@@ -1186,6 +1217,19 @@ def main():
             gpu_rows = geo_report.aggregate_gpus(schedulers, gpus_static)
             geo_report.write_gpu_csv(_cluster_config_path(args.geographic_gpu_output), gpu_rows)
             print(f"Saving per-GPU geographic aggregates to: {args.geographic_gpu_output}")
+
+        if args.gpu_utilization_timeseries_output:
+            utilization_rows = geo_report.aggregate_gpu_utilization_timeseries(
+                schedulers, gpus_static, args.gpu_utilization_window_ns
+            )
+            geo_report.write_gpu_utilization_timeseries_csv(
+                _cluster_config_path(args.gpu_utilization_timeseries_output),
+                utilization_rows,
+            )
+            print(
+                "Saving per-GPU utilization time series to: "
+                f"{args.gpu_utilization_timeseries_output}"
+            )
 
         if args.geographic_metadata_output:
             geo_report.write_metadata(

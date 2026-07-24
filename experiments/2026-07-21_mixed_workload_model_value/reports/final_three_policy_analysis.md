@@ -128,6 +128,23 @@ Compute/prefill, and RTT/other communication. Each rate pools all three seeds.
 - [2.5-rps breakdown](../figures/ttft_breakdown_rate2p5.png)
 - [3.33-rps breakdown](../figures/ttft_breakdown_rate3p33.png)
 - [Breakdown values](../analysis/ttft_breakdown_by_redirect_status.csv)
+- [Per-workload breakdown values](../analysis/ttft_breakdown_by_workload.csv)
+
+Per-workload figures:
+
+- [2.5 rps, seed 1](../figures/ttft_breakdown_by_workload/mixed_rate2p5_seed1.png)
+- [2.5 rps, seed 2](../figures/ttft_breakdown_by_workload/mixed_rate2p5_seed2.png)
+- [2.5 rps, seed 3](../figures/ttft_breakdown_by_workload/mixed_rate2p5_seed3.png)
+- [3.33 rps, seed 1](../figures/ttft_breakdown_by_workload/mixed_rate3p33_seed1.png)
+- [3.33 rps, seed 2](../figures/ttft_breakdown_by_workload/mixed_rate3p33_seed2.png)
+- [3.33 rps, seed 3](../figures/ttft_breakdown_by_workload/mixed_rate3p33_seed3.png)
+
+Two-policy figures excluding no-model Multi:
+
+- [2.5-rps pooled: KV migrate vs Multi learned](../figures/ttft_breakdown_kv_vs_learned/pooled_rate2p5.png)
+- [3.33-rps pooled: KV migrate vs Multi learned](../figures/ttft_breakdown_kv_vs_learned/pooled_rate3p33.png)
+- [Per-workload two-policy values](../analysis/ttft_breakdown_kv_vs_learned.csv)
+- Per-seed figures are under `figures/ttft_breakdown_kv_vs_learned/`.
 
 At 2.5 rps, all-policy Mean TTFT is nearly identical. Among the 12 redirected
 requests per policy, KV migrate averages 1003.8 ms, no-model Multi averages
@@ -143,3 +160,20 @@ to 607.5 ms and 617.0 ms, respectively. Between the proposed policies,
 no-model Multi is better because learned Multi has larger redirected scheduler
 queue (47.0 versus 31.9 ms), larger redirected compute/prefill time (692.1
 versus 669.2 ms), and three additional redirects.
+
+## GPU utilization measurement
+
+The simulator now records the union of completed real-batch execution
+intervals for each instance. After rerunning the experiment, `gpus.csv`
+contains `busy_time_ns`, `idle_time_ns`, `utilization_pct`, and
+`completed_batch_count`. The analyzer then writes:
+
+- `analysis/gpu_utilization_by_run_gpu.csv`
+- `analysis/gpu_utilization_summary.csv`
+- `figures/gpu_utilization_and_balance.png`
+
+The utilization denominator is the global workload window from the earliest
+request send to the latest request completion. Overlapping pipeline intervals
+are merged, and DP synchronization-only dummy batches are excluded. Existing
+results predate this instrumentation and must be rerun before these outputs are
+available.

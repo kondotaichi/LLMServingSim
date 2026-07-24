@@ -1,5 +1,7 @@
 import bisect
+import csv
 import json
+import os
 import random
 from .logger import get_logger
 from .memory_model import Device
@@ -82,6 +84,8 @@ class Router:
             oneshot_max_local_wait_ns=1_000_000_000.0,
             enable_oneshot_target_reservation=True,
             ttft_formula_artifact_dir=None,
+            counterfactual_request_id=None,
+            counterfactual_target_instance_id=None,
     ):
         # SPEC: stored for NEAREST_MIGRATE (see _maybe_migrate_and_redirect below).
         self.gpu_backbone_bandwidth_gbps = gpu_backbone_bandwidth_gbps
@@ -94,6 +98,13 @@ class Router:
         self.oneshot_redirect_margin_ns = float(oneshot_redirect_margin_ns)
         self.oneshot_max_local_wait_ns = float(oneshot_max_local_wait_ns)
         self.enable_oneshot_target_reservation = bool(enable_oneshot_target_reservation)
+        self.counterfactual_request_id = counterfactual_request_id
+        self.counterfactual_target_instance_id = counterfactual_target_instance_id
+        if ((counterfactual_request_id is None)
+                != (counterfactual_target_instance_id is None)):
+            raise ValueError(
+                "Counterfactual request and target IDs must be set together"
+            )
         self.ttft_formula = None
         if self.adaptive_token_time_ns <= 0 or self.adaptive_iteration_time_ns <= 0:
             raise ValueError("Adaptive routing time estimates must be positive")
@@ -123,6 +134,7 @@ class Router:
         self._deferred_sessions = {}     # session_id -> session state dict
         self._request_to_session = {}    # request_id -> (session_id, sub_request_index)
         self._next_request_id = 0        # monotonic counter for unique request IDs
+        self.candidate_diagnostics = []
 
         if self.routing_policy == "RR":
             self._select_instance = self._rr_select
@@ -180,6 +192,23 @@ class Router:
             from .ttft_formula import OfflineTtftFormula
             self.ttft_formula = OfflineTtftFormula(ttft_formula_artifact_dir)
         self.logger = get_logger(self.__class__)
+
+    def save_candidate_diagnostics(self, output_file):
+        """Write one row per evaluated redirect candidate."""
+        output_dir = os.path.dirname(output_file)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        fieldnames = []
+        seen = set()
+        for row in self.candidate_diagnostics:
+            for key in row:
+                if key not in seen:
+                    fieldnames.append(key)
+                    seen.add(key)
+        with open(output_file, 'w', newline='', encoding='utf-8') as file:
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(self.candidate_diagnostics)
 
     # -----------------------------------------------------------------------
     # Instance selection policies
@@ -1187,9 +1216,11 @@ class Router:
         scored = []
         for target in admissible:
             snapshot = self._capacity_snapshot(target, req_data)
+            features = None if no_model else self._ttft_formula_features(
+                req_data, target
+            )
             prediction = None if no_model else self.ttft_formula.predict(
-                self._ttft_formula_features(req_data, target),
-                'NEAREST_MIGRATE_KV',
+                features, 'NEAREST_MIGRATE_KV'
             )
             kv_migration = (
                 self._kv_migration_cost_ns(target, req_data)
@@ -1208,6 +1239,7 @@ class Router:
                 'target_id': int(target.instance_id),
                 'target': target,
                 'prediction': prediction,
+                'features': features,
                 'kv_migration': kv_migration,
                 'snapshot': snapshot,
             })
@@ -1231,11 +1263,88 @@ class Router:
             selected_target = min(
                 scored, key=lambda item: (item['total'], item['target_id'])
             )
+        model_selected_target = selected_target
+        counterfactual_override = (
+            self.counterfactual_request_id is not None
+            and int(req_data.get('index')) == int(self.counterfactual_request_id)
+        )
+        if counterfactual_override:
+            forced = [
+                item for item in scored
+                if item['target_id'] == int(self.counterfactual_target_instance_id)
+            ]
+            if not forced:
+                raise RuntimeError(
+                    "Counterfactual target is not admissible at the routing decision: "
+                    f"request={self.counterfactual_request_id}, "
+                    f"target={self.counterfactual_target_instance_id}"
+                )
+            selected_target = forced[0]
         redirect_total = selected_target['total']
         target_id = selected_target['target_id']
         target = selected_target['target']
         redirect_prediction = selected_target['prediction']
         kv_migration = selected_target['kv_migration']
+
+        if not no_model:
+            pressure_order = sorted(
+                scored,
+                key=lambda item: (
+                    item['snapshot']['capacity_pressure'], item['target_id']
+                ),
+            )
+            model_order = sorted(
+                scored, key=lambda item: (item['total'], item['target_id'])
+            )
+            pressure_rank = {
+                item['target_id']: rank
+                for rank, item in enumerate(pressure_order, start=1)
+            }
+            model_rank = {
+                item['target_id']: rank
+                for rank, item in enumerate(model_order, start=1)
+            }
+            for item in scored:
+                prediction = item['prediction']
+                row = {
+                    'request_id': req_data.get('index'),
+                    'decision_time_ns': int(current_time_ns),
+                    'reevaluation_count': reevaluations,
+                    'home_instance_id': home_id,
+                    'candidate_instance_id': item['target_id'],
+                    'candidate_count': len(candidates),
+                    'admissible_candidate_count': len(admissible),
+                    'capacity_pressure_rank': pressure_rank[item['target_id']],
+                    'model_ttft_rank': model_rank[item['target_id']],
+                    'selected_by_model': int(item is model_selected_target),
+                    'selected_for_routing': int(item is selected_target),
+                    'counterfactual_override': int(counterfactual_override),
+                    'predicted_total_ttft_ms': item['total'] / 1e6,
+                    'predicted_route_probability': prediction['route_probability'],
+                    'predicted_route_positive_ms': prediction['route_positive_ms'],
+                    'predicted_route_upper_ms': prediction['route_upper_ms'],
+                    'predicted_route_ms': prediction['route_ms'],
+                    'predicted_scheduler_raw_ms': prediction.get(
+                        'scheduler_raw_ms', prediction['scheduler_ms']
+                    ),
+                    'predicted_scheduler_ms': prediction['scheduler_ms'],
+                    'predicted_compute_ms': prediction['compute_ms'],
+                    'predicted_formula_ttft_ms': prediction['ttft_ms'],
+                    'request_migration_ms': request_migration / 1e6,
+                    'kv_migration_ms': item['kv_migration'] / 1e6,
+                    'downlink_ms': (
+                        downlink_distance_ns + downlink_serialization_ns
+                    ) / 1e6,
+                }
+                row.update({
+                    f'candidate_{key}': value
+                    for key, value in item['snapshot'].items()
+                })
+                row.update({
+                    f'feature_{key}': value
+                    for key, value in item['features'].items()
+                })
+                self.candidate_diagnostics.append(row)
 
         wait_start = req_data.get('_router_capacity_wait_start_ns')
         elapsed_wait = (

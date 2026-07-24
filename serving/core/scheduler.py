@@ -44,6 +44,10 @@ class Scheduler:
         self.inflight = []
         self.done = []
         self.batch_ids = -1
+        # One interval per completed real batch. Keeping intervals instead of
+        # summing request service time avoids double-counting batched requests
+        # and allows overlapping pipeline batches to be merged at reporting.
+        self.batch_busy_intervals_ns = []
 
         # memory model
         self.memory = MemoryModel(model, instance_id, node_id, num_npus, tp_size, npu_mem, cpu_mem, block_size, fp, enable_prefix_caching, enable_prefix_sharing, prefix_pool, prefix_storage, cxl_mem, ep_size=ep_size, pp_size=pp_size, kv_cache_dtype=kv_cache_dtype)
@@ -735,6 +739,7 @@ class Scheduler:
         )
         batch.finish_time_ns = finish
         batch_dur = finish - batch.batch_time
+        self.batch_busy_intervals_ns.append((batch.batch_time, finish))
 
         pool = []
         for req in batch.requests:

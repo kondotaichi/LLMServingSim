@@ -78,6 +78,50 @@ These fields make memory-triggered redirects directly auditable: a row with
 `capacity_running_reqs < capacity_max_num_seqs` was redirected for memory
 pressure before reaching the sequence limit.
 
+### Per-GPU utilization
+
+When `--geographic-gpu-output outputs/gpus.csv` is set, the per-GPU CSV also
+contains batch-based utilization fields:
+
+| Column | Meaning |
+| --- | --- |
+| `observation_start_ns` | Earliest request-send timestamp in the workload |
+| `observation_end_ns` | Latest request-completion timestamp in the workload |
+| `observation_time_ns` | Global observation-window duration |
+| `busy_time_ns` | Union of completed real-batch execution intervals for the instance |
+| `idle_time_ns` | Observation time not covered by a real batch |
+| `utilization_pct` | `100 * busy_time_ns / observation_time_ns` |
+| `completed_batch_count` | Number of completed real batches |
+
+Batch intervals are merged before summation, so overlapping pipeline batches
+do not push utilization above 100%. DP synchronization-only dummy batches are
+excluded. For a multi-GPU TP instance, the instance utilization is reported for
+each member GPU because the trace engages the instance as a unit; this is not a
+per-kernel hardware-counter measurement.
+
+Pass `--gpu-utilization-timeseries-output outputs/gpu_utilization.csv` to
+write the same batch-busy metric for every GPU in fixed time windows. The
+default window is one second; change it with
+`--gpu-utilization-window-ns`. The time-series CSV contains the absolute
+window bounds, `time_since_start_s`, GPU and instance IDs, busy/idle time, and
+`utilization_pct` for each window.
+
+For formula-based Multi-candidate routing, pass
+`--routing-candidate-output outputs/routing_candidates.csv` to record one row
+per evaluated admissible target. The diagnostic CSV contains the candidate
+capacity snapshot, every formula feature, Router/Scheduler/Compute prediction
+components, the Scheduler estimate before and after non-negative clipping,
+communication and KV-migration costs, capacity-pressure rank, model-TTFT rank,
+and the selected-target flag. This output is intended for model diagnosis and
+counterfactual dataset construction; it does not alter simulated time.
+
+For controlled diagnostic replay, set both `--counterfactual-request-id` and
+`--counterfactual-target-instance-id`. Formula-based Multi-candidate routing
+then follows its normal policy until that request reaches an admissible-target
+decision, forces the specified target for that decision, and resumes the normal
+policy afterward. The simulator fails if the forced target is not admissible,
+preventing an invalid counterfactual from being silently recorded.
+
 ### Common derived metrics
 
 ```python

@@ -44,7 +44,6 @@ GPU_COORDS_M = [
     (8333.333, 7886.751),
 ]
 
-
 def register_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--input", required=True,
                     help="Output of `regional-ratio` (has user_id/gpu_id/arrival_time_ns).")

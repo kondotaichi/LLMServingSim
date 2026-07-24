@@ -14,6 +14,12 @@ class Controller():
         out = [""]
         while "Waiting" not in out[-1] and out[-1] != "Checking Non-Exited Systems ...\n":
             line = p.stdout.readline()
+            if line == "":
+                returncode = p.poll()
+                raise RuntimeError(
+                    "ASTRA-Sim stdout closed before a Waiting event "
+                    f"(return code: {returncode})"
+                )
             # For debugging
             # print(line, end='')
             out.append(line)
@@ -23,7 +29,14 @@ class Controller():
     def check_end(self, p):
         out = ["",""]
         while out[-2] != "All Request Has Been Exited\n" and out[-2] != "ERROR: Some Requests Remain\n":
-            out.append(p.stdout.readline())
+            line = p.stdout.readline()
+            if line == "":
+                returncode = p.poll()
+                raise RuntimeError(
+                    "ASTRA-Sim stdout closed before the completion marker "
+                    f"(return code: {returncode})"
+                )
+            out.append(line)
             p.stdout.flush()
         print(out[-4], end='')
         print(out[-2], end='')

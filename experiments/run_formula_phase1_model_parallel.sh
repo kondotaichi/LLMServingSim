@@ -9,8 +9,6 @@ cd "${REPO_ROOT}"
 POLICY="NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE"
 RESULT_NAME="${POLICY}_M200MS_D1S_PHASE1_MODEL20260720"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
-LOG_DIR="experiments/logs"
-mkdir -p "${LOG_DIR}"
 
 run_condition() {
   local experiment_dir="$1"
@@ -18,7 +16,7 @@ run_condition() {
   local run_id="$3"
   local output_dir="${experiment_dir}/results/${RESULT_NAME}"
 
-  mkdir -p "${output_dir}"
+  mkdir -p "${output_dir}" "${experiment_dir}/logs"
   env TEMPORARILY_DISABLE_PROTOBUF_VERSION_CHECK=true "${PYTHON_BIN}" -m serving \
     --cluster-config configs/cluster/ten_node_rtx4090_apn.json \
     --dataset "${workload}" \
@@ -52,14 +50,14 @@ run_condition \
   "experiments/2026-07-14_prompt6000_90s_three_policy_良結果" \
   "workloads/generated/cell_apn/prompt6000_90s/sharegpt_300_prompt6000_reuse50_90s.jsonl" \
   "prompt6000-reuse50-90s-formula-phase1-model-m200ms-d1s" \
-  > "${LOG_DIR}/formula_phase1_model_prompt6000_90s.log" 2>&1 &
+  > "experiments/2026-07-14_prompt6000_90s_three_policy_良結果/logs/formula_phase1_model.log" 2>&1 &
 PID_PROMPT=$!
 
 run_condition \
   "experiments/2026-07-16_input10000_reuse05_180s_three_policy_良結果" \
   "experiments/2026-07-16_input10000_reuse05_180s_three_policy_良結果/workloads/input10000_reuse05_180s.jsonl" \
   "input10000-reuse05-180s-formula-phase1-model-m200ms-d1s" \
-  > "${LOG_DIR}/formula_phase1_model_input10000_180s.log" 2>&1 &
+  > "experiments/2026-07-16_input10000_reuse05_180s_three_policy_良結果/logs/formula_phase1_model.log" 2>&1 &
 PID_INPUT=$!
 
 STATUS_PROMPT=0

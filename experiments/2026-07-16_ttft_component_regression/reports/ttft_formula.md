@@ -34,6 +34,79 @@ $\mu_j,\sigma_j$は`analysis/ttft_formula/numeric_feature_scaling.csv`に全27�
 policyはone-hot encodingする。学習時に存在したcategoryは`NEAREST_KV`、
 `NEAREST_MIGRATE`、`NEAREST_MIGRATE_KV`である。
 
+## 入力特徴量の意味
+
+以下の入力は、いずれもrequestを最初にroutingしようとした時点で取得できる情報である。
+`router_initial_*`の`initial`は、redirect後やscheduler投入後ではなく、最初のrouting判断時の
+snapshotであることを表す。候補GPUごとに式を評価する場合、「home」はその評価対象の
+candidate GPUとして読み替える。
+
+### Requestと到着過程
+
+| Input | 単位 | 意味 |
+|---|---:|---|
+| `input_tokens` | tokens | Prompt全体のtoken数。prefix cache hitを含む、requestが持つ元の入力長である。 |
+| `output_tokens` | tokens | 生成予定の新規token数。内部表現の総sequence長から`input_tokens`を引き、0未満にならないようにした値である。 |
+| `home_cached_prefix_tokens` | tokens | Routing判断時にhome/candidate GPUで再利用できるprompt prefixのtoken数。多いほどprefillで再計算する部分が減る。 |
+| `request_rate_rps` | requests/s | 当該runまたはworkloadに設定された平均request到着率。瞬間値ではなく、traffic全体のoffered loadを表す。 |
+| `arrival_offset_s` | s | Run内の最初のrequest送信時刻から当該request送信時刻までの経過時間。warm-up、混雑蓄積、drainなどrun内の位置を表すproxyでもある。 |
+| `interarrival_ms` | ms | 送信時刻順で直前のrequestから当該requestまでの間隔。先頭requestは0である。小さいほど直近にrequestが集中している。 |
+| `global_arrivals_1s` | requests | 当該requestより前の直近1秒間に、全home GPU向けに到着したrequest数。現在のrequest自身は含まない。 |
+| `global_arrivals_5s` | requests | 同じく直近5秒間に全体へ到着したprior request数。1秒値より持続的なtraffic強度を表す。 |
+| `home_arrivals_1s` | requests | 直近1秒間のprior requestsのうち、当該home/candidate GPUをhomeとするrequest数。局所的な短時間burstを表す。 |
+| `home_arrivals_5s` | requests | 同じく直近5秒間に当該home/candidate GPUへ割り当てられたprior request数。局所負荷の持続性を表す。 |
+| `home_workload_share` | ratio | Run内の全requestsのうち、当該home/candidate GPUをhomeとするrequestの割合。現在のrequest自身を含み、0から1の範囲を取る。 |
+
+`global_arrivals_*`と`home_arrivals_*`は実際にGPUへadmitされた数ではなく、送信されたworkloadの
+到着履歴である。前者はsystem全体のburst、後者は特定GPUへ偏ったburstを区別する。
+
+### 対象GPUのqueue、KV、sequence slot
+
+| Input | 単位 | 意味 |
+|---|---:|---|
+| `router_initial_waiting_reqs` | requests | 対象GPUのscheduler queueに入り、まだ実行batchに含まれていないrequest数。 |
+| `router_initial_running_reqs` | requests | 対象GPUでinflight batchに含まれているrequest数。batch数ではなく、全inflight batches内のrequest数の合計である。 |
+| `router_initial_required_kv_bytes` | bytes | 新規requestが完了までに必要とすると見積もったKV cache容量。総sequence長をKV block sizeへ切り上げて算出する。 |
+| `router_initial_projected_active_kv_bytes` | bytes | 対象GPUですでにwaitingまたはrunningの各requestが完了までに必要とするKV容量の予測合計。重複requestは一度だけ数え、他request向けの予約KVも含む。 |
+| `router_initial_available_kv_bytes` | bytes | KV budgetから`projected_active_kv_bytes`を引いた予測空き容量。負値は0へ丸める。これはallocatorの瞬間的なfree bytesではなく、active requestsの将来使用量を見込んだ余力である。 |
+| `router_initial_capacity_pressure` | ratio | 新規requestも配置した場合のKV圧力。`(projected active KV + required KV) / KV budget`で、1を超えると予測必要量がbudgetを超える。 |
+| `router_initial_slot_pressure` | ratio | 新規requestも含むsequence slot圧力。`(running requests + reserved slots + 1) / max_num_seqs`である。1を超えるとslot上限を超える。 |
+
+`required_kv_bytes`は新規request単体、`projected_active_kv_bytes`は既存request群、
+`available_kv_bytes`は既存群を考慮した残量、`capacity_pressure`はそこへ新規requestまで
+置いた場合の比率である。この4列は同じKV収容状態から導かれるため、互いに強く相関する。
+
+### 全候補GPUを集約した状態
+
+| Input | 単位 | 意味 |
+|---|---:|---|
+| `router_initial_admissible_candidate_count` | GPUs | 最初のrouting時点で、新規requestをKV容量とsequence slotの両方について収容可能な候補GPU数。 |
+| `router_initial_total_waiting_reqs` | requests | 全候補GPUの`waiting_reqs`の合計。system全体のscheduler backlogを表す。 |
+| `router_initial_max_waiting_reqs` | requests | 候補GPUのうち最大の`waiting_reqs`。最も混雑したqueueの状態を表す。 |
+| `router_initial_total_running_reqs` | requests | 全候補GPUの`running_reqs`の合計。system全体でinflightなrequest量を表す。 |
+| `router_initial_max_running_reqs` | requests | 候補GPUのうち最大の`running_reqs`。最も多くのrequestを実行中のGPUの状態を表す。 |
+| `router_initial_min_available_kv_bytes` | bytes | 全候補中で最小の予測空きKV容量。最もKV余力の小さいGPUを表す。 |
+| `router_initial_max_available_kv_bytes` | bytes | 全候補中で最大の予測空きKV容量。最もKV余力の大きいGPUを表す。 |
+| `router_initial_min_capacity_pressure` | ratio | 全候補中で最小のcapacity pressure。最も収容余力のある逃げ先がどの程度空いているかを表す。 |
+| `router_initial_max_capacity_pressure` | ratio | 全候補中で最大のcapacity pressure。最もKV圧力の高いGPUの状態を表す。 |
+
+これらの集約値は、対象GPU単体の状態だけでなく「他GPUへ逃がせるか」「system全体が
+同時に混雑しているか」を式へ与える。`min`/`max`はGPU IDではなく、各候補で観測した値の
+最小値・最大値である。
+
+### Routing policy
+
+| Input | 値 | 意味 |
+|---|---:|---|
+| `policy_NEAREST_KV` | 0/1 | Nearest/home GPUで待ち、既存のprefix KV localityを維持するpolicyなら1。 |
+| `policy_NEAREST_MIGRATE` | 0/1 | 別GPUへredirectし、KVを引き継がずcold prefillするpolicyなら1。 |
+| `policy_NEAREST_MIGRATE_KV` | 0/1 | 別GPUへredirectし、再利用可能なKVをhandoffするpolicyなら1。 |
+
+3列のうち当該policyに対応する1列だけが1となるone-hot表現である。policy入力は、同じ
+queue/KV状態でも、homeで待つか、cold redirectするか、KV付きでredirectするかによって
+route待ちやscheduler待ちの関係が変わることを表現する。compute式にはpolicy one-hotを
+直接使用せず、`input_tokens`と`home_cached_prefix_tokens`だけを使用する。
+
 ## Router queue発生確率
 
 $$

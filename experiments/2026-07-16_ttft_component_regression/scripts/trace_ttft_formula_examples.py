@@ -141,8 +141,13 @@ def main():
     tail_clipped = np.clip(tail_raw.to_numpy(), *model["route_log_bounds"])
     positive_route = np.expm1(tail_clipped)
     expected_route = probability * positive_route
+    # Mirrors serving/core/ttft_formula.py: the scheduler linear model now
+    # predicts log1p(scheduler_ms) (see MODEL_ITERATION_HISTORY.md item 12/13
+    # in experiments/2026-07-21-add_gpu_utilization/), so recovering ms needs
+    # a clip-then-expm1, not the old max(0, raw_ms).
     scheduler_raw = scheduler.groupby("case").contribution.sum().reindex(cases)
-    scheduler_prediction = np.maximum(0, scheduler_raw.to_numpy())
+    scheduler_clipped = np.clip(scheduler_raw.to_numpy(), *model["scheduler_log_bounds"])
+    scheduler_prediction = np.expm1(scheduler_clipped)
     compute_intercept = float(model["compute"].intercept_)
     compute_input = examples.input_tokens.to_numpy() * model["compute"].coef_[0]
     compute_cache = (

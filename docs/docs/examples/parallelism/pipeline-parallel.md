@@ -72,8 +72,23 @@ python -m serving \
   --log-interval 1.0
 ```
 
-No new CLI flag, the parallelism degree is fully driven by the
-cluster config.
+The parallelism degree can be driven by the cluster config or overridden
+for every logical instance at run time:
+
+```bash
+python -m serving \
+  --cluster-config 'configs/cluster/five_node_rtx4090_apn.json' \
+  --pp-size 2 \
+  --request-routing-policy NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE \
+  --dataset '<WORKLOAD_WITH_INSTANCE_IDS_0_TO_4>.jsonl'
+```
+
+When `--pp-size` is omitted, each instance uses the `pp_size` in the
+cluster config, or PP=1 when the field is absent. The override preserves
+the configured TP degree and sets `num_npus = tp_size * pp_size`; it does
+not merge instances or remap geographic workload IDs. A 5 x PP2 experiment
+therefore needs a five-instance cluster config and a workload whose
+`assigned_instance_id` values refer to those five instances.
 
 ## Expected output
 
