@@ -470,5 +470,270 @@ class DynamicFormulaRouterTest(unittest.TestCase):
         )
 
 
+class FakeMigrationMemory(FakeMemory):
+    """Extends FakeMemory with just enough of seed_migrated_prefix's
+    contract for _apply_kv_migration_if_needed, without any of the real
+    prefix-cache/eviction machinery."""
+
+    @staticmethod
+    def seed_migrated_prefix(token_ids, prefix_len):
+        return min(int(prefix_len), len(token_ids or []))
+
+
+def make_migrate_kv_req_data(arrival_time_ns=1_000, reuse_prefix_toks=50,
+                              speculative_elapsed_ns=None):
+    req_data = {
+        'arrival_time_ns': arrival_time_ns,
+        'input_toks': 100,
+        'input_hash_ids': list(range(100)),
+        'failover': {
+            'failover_mode': 'migrate_kv',
+            'reuse_prefix_toks': reuse_prefix_toks,
+            'kv_migration_bandwidth_gbps': 100.0,
+            'kv_migration_distance_m': 10.0,
+            'distance_latency_ns_per_meter': 5.0,
+        },
+        'geo': {},
+    }
+    if speculative_elapsed_ns is not None:
+        req_data['_speculative_kv_elapsed_ns'] = speculative_elapsed_ns
+    return req_data
+
+
+class SchedulerHideKvMigrationTest(unittest.TestCase):
+    """_apply_kv_migration_if_needed: Method A (overlap) and Method B
+    (speculative-transfer credit) at the router level, independent of the
+    scheduler.py batch_req gate (covered separately in
+    tests/test_scheduler_hide_kv_migration.py)."""
+
+    def make_router(self, **overrides):
+        return Router(
+            1, [make_scheduler(0)], 1,
+            routing_policy='NEAREST_MIGRATE_KV',
+            gpu_backbone_bandwidth_gbps=100.0,
+            gpu_backbone_distance_m=10.0,
+            **overrides,
+        )
+
+    def test_default_behavior_keeps_kv_migration_serial(self):
+        router = self.make_router()
+        target = make_scheduler(0)
+        target.memory = FakeMigrationMemory()
+        req_data = make_migrate_kv_req_data()
+
+        router._apply_kv_migration_if_needed(req_data, target)
+
+        migration_ns = req_data['failover']['kv_migration_latency_ns']
+        self.assertGreater(migration_ns, 0)
+        self.assertEqual(req_data['arrival_time_ns'], 1_000 + migration_ns)
+        self.assertEqual(req_data['geo']['kv_ready_time_ns'], req_data['arrival_time_ns'])
+        self.assertEqual(
+            req_data['failover']['kv_migration_effective_latency_ns'], migration_ns
+        )
+        self.assertEqual(req_data['failover']['kv_migration_speculative_hidden_ns'], 0)
+
+    def test_scheduler_hide_flag_splits_arrival_from_kv_ready(self):
+        router = self.make_router(enable_scheduler_hide_kv_migration=True)
+        target = make_scheduler(0)
+        target.memory = FakeMigrationMemory()
+        req_data = make_migrate_kv_req_data()
+
+        router._apply_kv_migration_if_needed(req_data, target)
+
+        migration_ns = req_data['failover']['kv_migration_latency_ns']
+        self.assertGreater(migration_ns, 0)
+        # Method A: request is visible to the target scheduler immediately.
+        self.assertEqual(req_data['arrival_time_ns'], 1_000)
+        # ...but prefill compute must still wait for the full transfer.
+        self.assertEqual(req_data['geo']['kv_ready_time_ns'], 1_000 + migration_ns)
+        self.assertEqual(
+            req_data['failover']['kv_migration_effective_latency_ns'], migration_ns
+        )
+
+    def test_speculative_credit_shortens_effective_migration(self):
+        router = self.make_router(
+            enable_scheduler_hide_kv_migration=True,
+            enable_speculative_kv_migration=True,
+        )
+        target = make_scheduler(0)
+        target.memory = FakeMigrationMemory()
+        req_data = make_migrate_kv_req_data(speculative_elapsed_ns=10)
+
+        router._apply_kv_migration_if_needed(req_data, target)
+
+        migration_ns = req_data['failover']['kv_migration_latency_ns']
+        self.assertEqual(
+            req_data['failover']['kv_migration_effective_latency_ns'], migration_ns - 10
+        )
+        self.assertEqual(
+            req_data['failover']['kv_migration_speculative_hidden_ns'], 10
+        )
+        self.assertEqual(req_data['geo']['kv_ready_time_ns'], 1_000 + migration_ns - 10)
+
+    def test_speculative_credit_clamps_to_full_migration(self):
+        router = self.make_router(
+            enable_scheduler_hide_kv_migration=True,
+            enable_speculative_kv_migration=True,
+        )
+        target = make_scheduler(0)
+        target.memory = FakeMigrationMemory()
+        # Elapsed speculative time far exceeds what migration would ever
+        # cost -- effective latency must clamp at 0, never go negative.
+        req_data = make_migrate_kv_req_data(speculative_elapsed_ns=10**12)
+
+        router._apply_kv_migration_if_needed(req_data, target)
+
+        self.assertEqual(req_data['failover']['kv_migration_effective_latency_ns'], 0)
+        self.assertEqual(req_data['geo']['kv_ready_time_ns'], req_data['arrival_time_ns'])
+
+
+class SpeculativeKvPinAndRecalibrationTest(unittest.TestCase):
+    """_maybe_capacity_dynamic_formula_route: B-1 local-wait recalibration
+    and Method B pin/commit/waste bookkeeping."""
+
+    INFLATED_PREDICTION = {
+        'route_probability': 1.0, 'route_positive_ms': 10.0,
+        # A residual this large mirrors the production formula's fixed
+        # ~90th-percentile safety margin, which structurally always exceeds
+        # any reasonable oneshot_max_local_wait_ns.
+        'route_upper_ms': 5_010.0, 'route_ms': 10.0,
+        'scheduler_ms': 1.0, 'compute_ms': 1.0, 'ttft_ms': 12.0,
+    }
+
+    @staticmethod
+    def add_formula_features(request):
+        request['_ttft_formula_workload_features'] = {
+            'request_rate_rps': 3.0, 'arrival_offset_s': 10.0,
+            'interarrival_ms': 300.0, 'global_arrivals_1s': 2,
+            'global_arrivals_5s': 15, 'home_arrivals_1s': 1,
+            'home_arrivals_5s': 2, 'home_workload_share': 0.1,
+        }
+
+    @staticmethod
+    def constrain(scheduler):
+        scheduler.request.append(FakeRequest(99 + scheduler.instance_id, 100, 10_000))
+        scheduler.memory.mem_for_kv = 100_500
+
+    def make_router(self, schedulers, margin_ns, max_wait_ns, **overrides):
+        router = Router(
+            len(schedulers), schedulers, 1,
+            routing_policy='NEAREST_CAPACITY_MULTI_FORMULA_KV_RESERVE',
+            gpu_backbone_bandwidth_gbps=100.0,
+            apn_fixed_propagation_ns=10.0,
+            oneshot_redirect_margin_ns=margin_ns,
+            oneshot_max_local_wait_ns=max_wait_ns,
+            **overrides,
+        )
+        router.ttft_formula = SimpleNamespace(
+            predict=lambda _features, _policy: self.INFLATED_PREDICTION
+        )
+        return router
+
+    def test_inflated_upper_bound_is_default(self):
+        home = make_scheduler(0)
+        target = make_scheduler(1)
+        self.constrain(home)
+        router = self.make_router([home, target], margin_ns=0, max_wait_ns=10**9)
+        request = make_request(1)
+        self.add_formula_features(request)
+
+        router._maybe_capacity_dynamic_formula_route(request, 1_000)
+
+        self.assertEqual(
+            request['geo']['oneshot_predicted_local_wait_ns'],
+            self.INFLATED_PREDICTION['route_upper_ms'] * 1e6,
+        )
+
+    def test_point_estimate_flag_uses_plain_ttft(self):
+        home = make_scheduler(0)
+        target = make_scheduler(1)
+        self.constrain(home)
+        router = self.make_router(
+            [home, target], margin_ns=0, max_wait_ns=10**9,
+            enable_formula_local_wait_point_estimate=True,
+        )
+        request = make_request(1)
+        self.add_formula_features(request)
+
+        router._maybe_capacity_dynamic_formula_route(request, 1_000)
+
+        self.assertEqual(
+            request['geo']['oneshot_predicted_local_wait_ns'],
+            self.INFLATED_PREDICTION['ttft_ms'] * 1e6,
+        )
+
+    def test_speculative_pin_credits_elapsed_time_on_matching_commit(self):
+        home = make_scheduler(0)
+        target = make_scheduler(1)
+        self.constrain(home)
+        # margin=1e6ns: redirect (~12.0003ms) is not enough better than
+        # local (12ms point estimate) to win outright -> defers on call 1.
+        # max_wait=1e9ns (1s): local_wait (12ms) alone never trips the
+        # deadline; only accumulated elapsed_wait will, on call 2.
+        router = self.make_router(
+            [home, target], margin_ns=10**6, max_wait_ns=10**9,
+            enable_formula_local_wait_point_estimate=True,
+            enable_scheduler_hide_kv_migration=True,
+            enable_speculative_kv_migration=True,
+        )
+        request = make_request(1)
+        self.add_formula_features(request)
+
+        deferred = router._maybe_capacity_dynamic_formula_route(request, 1_000)
+        self.assertTrue(deferred)
+        self.assertEqual(
+            request['geo']['oneshot_decision_reason'], 'awaiting_predicted_local'
+        )
+        pinned_target = request['_speculative_kv_target_instance_id']
+        self.assertEqual(pinned_target, 1)
+        pin_time_ns = request['_speculative_kv_pin_time_ns']
+        self.assertEqual(pin_time_ns, 1_000)
+
+        later = 1_000 + 2 * 10**9  # elapsed_wait now exceeds max_wait_ns
+        deferred = router._maybe_capacity_dynamic_formula_route(request, later)
+
+        # True here means "just committed, needs re-insertion into the
+        # pending queue" -- matching the existing convention (e.g.
+        # test_multi_candidate_uses_available_non_second_target), not
+        # "still waiting". A *third* call would return False (already
+        # decided, cold_migrate/kv_handoff short-circuit at the top).
+        self.assertTrue(deferred)
+        self.assertEqual(
+            request['geo']['oneshot_decision_reason'], 'elapsed_local_wait_exceeds_limit'
+        )
+        self.assertEqual(request['_oneshot_selected_route'], 'kv_handoff')
+        self.assertEqual(request['assigned_instance_id'], pinned_target)
+        self.assertEqual(
+            request['_speculative_kv_elapsed_ns'], later - pin_time_ns
+        )
+        self.assertEqual(request['geo']['speculative_kv_wasted'], 0)
+
+    def test_speculative_pin_marked_wasted_when_home_wins(self):
+        home = make_scheduler(0)
+        target = make_scheduler(1)
+        self.constrain(home)
+        router = self.make_router(
+            [home, target], margin_ns=10**6, max_wait_ns=10**9,
+            enable_formula_local_wait_point_estimate=True,
+            enable_scheduler_hide_kv_migration=True,
+            enable_speculative_kv_migration=True,
+        )
+        request = make_request(1)
+        self.add_formula_features(request)
+
+        deferred = router._maybe_capacity_dynamic_formula_route(request, 1_000)
+        self.assertTrue(deferred)
+        self.assertIn('_speculative_kv_target_instance_id', request)
+
+        # Home frees up before the deadline fires.
+        home.request.clear()
+        deferred = router._maybe_capacity_dynamic_formula_route(request, 2_000)
+
+        self.assertFalse(deferred)
+        self.assertEqual(request['_oneshot_selected_route'], 'local')
+        self.assertEqual(request['geo']['speculative_kv_wasted'], 1)
+        self.assertGreaterEqual(request['geo']['speculative_kv_wasted_ns'], 0)
+
+
 if __name__ == '__main__':
     unittest.main()

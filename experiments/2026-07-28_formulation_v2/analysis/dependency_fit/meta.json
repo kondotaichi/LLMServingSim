@@ -1,0 +1,31 @@
+{
+  "n": 13500,
+  "n_scenarios": 15,
+  "validation": "leave-one-scenario-out",
+  "route_target": "log1p(router_queue_ms)",
+  "route_features": [
+    "log1p_retry_count",
+    "router_initial_capacity_pressure",
+    "router_initial_admissible_candidate_count"
+  ],
+  "queue_target": "log1p(scheduler_queue_ms)",
+  "queue_features": [
+    "request_rate_rps",
+    "router_initial_waiting_reqs",
+    "router_initial_running_reqs",
+    "router_initial_capacity_pressure",
+    "router_initial_admissible_candidate_count"
+  ],
+  "prefill_target": "log1p(compute_prefill_ms)",
+  "prefill_features": [
+    "uncached_tokens",
+    "cached_prefix_tokens"
+  ],
+  "communication_target": "kv_transfer_ms + other_communication_ms",
+  "communication_features": [
+    "rerouted",
+    "kv_moved",
+    "migrated_tokens"
+  ],
+  "note": "Communication features describe the realized routing action and are explanatory rather than send-time predictors."
+}

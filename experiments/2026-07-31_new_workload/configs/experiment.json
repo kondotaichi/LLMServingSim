@@ -1,0 +1,307 @@
+{
+  "geography": {
+    "area_km2": 11.0,
+    "shape": "square",
+    "side_m": 3316.6247903554,
+    "population": 200000,
+    "population_density_per_km2": 18181.81818181818,
+    "placement": "uniform random users, 4x5 regular GPU grid",
+    "placement_seed": 20260731
+  },
+  "capacity": {
+    "num_gpus": 20,
+    "population_per_gpu": 10000.0,
+    "area_per_gpu_km2": 0.55,
+    "min_nearest_users_per_gpu": 9870,
+    "max_nearest_users_per_gpu": 10167
+  },
+  "traffic_model": {
+    "daily_active_user_fraction": 0.1,
+    "daily_active_users": 20000.0,
+    "requests_per_active_user_day": 20.0,
+    "total_requests_day": 400000.0,
+    "busy_hour_daily_request_share": 0.15,
+    "peak_multiplier_over_busy_hour": 2.0,
+    "rates_rps": {
+      "daily_average": 4.62962962962963,
+      "busy_hour": 16.666666666666668,
+      "peak_2x": 33.333333333333336
+    },
+    "requests_per_trace": 3000,
+    "arrival_process": "Poisson, rescaled to exact target duration",
+    "request_user_sampling": "uniform over the fixed daily-active user set",
+    "prefix_reuse": "disabled in this baseline workload"
+  },
+  "network_model": {
+    "access_throughput_mbps": 100.0,
+    "distance_latency_ns_per_meter": 5.0,
+    "protocol_overhead_bytes": 500,
+    "bytes_per_input_token": 4,
+    "first_token_payload_bytes": 100,
+    "gpu_backbone_bandwidth_GBps": 50,
+    "gpu_backbone_latency_ns": 20000
+  },
+  "hardware_model": {
+    "target_class": "NVIDIA GH200 Grace Hopper, 96 GB HBM3 variant",
+    "gpu_memory_GB": 96,
+    "gpu_memory_bandwidth_GBps": 4000,
+    "grace_cpu_memory_GB": 480,
+    "grace_cpu_memory_bandwidth_GBps": 500,
+    "compute_profile_proxy": "RTXPRO6000",
+    "warning": "The repository has no GH200 profiler/perf dataset. Memory values are GH200-class, but compute latency uses the existing RTXPRO6000 profile."
+  },
+  "workloads": [
+    {
+      "condition": "daily_average_seed1",
+      "load_level": "daily_average",
+      "seed": 1,
+      "requests": 3000,
+      "target_rate_rps": 4.62962962962963,
+      "realized_send_rate_rps": 4.62962962962963,
+      "duration_s": 648.0,
+      "mean_input_toks": 3835.824,
+      "mean_output_toks": 336.64,
+      "min_requests_per_gpu": 136,
+      "max_requests_per_gpu": 169,
+      "workload": "workloads/daily_average_seed1.jsonl",
+      "input_distribution": {
+        "512": 581,
+        "2000": 748,
+        "4000": 768,
+        "6000": 440,
+        "8000": 314,
+        "10000": 149
+      },
+      "output_distribution": {
+        "128": 946,
+        "256": 1172,
+        "512": 614,
+        "1024": 268
+      }
+    },
+    {
+      "condition": "daily_average_seed2",
+      "load_level": "daily_average",
+      "seed": 2,
+      "requests": 3000,
+      "target_rate_rps": 4.62962962962963,
+      "realized_send_rate_rps": 4.62962962962963,
+      "duration_s": 648.0,
+      "mean_input_toks": 3742.464,
+      "mean_output_toks": 345.6426666666667,
+      "min_requests_per_gpu": 125,
+      "max_requests_per_gpu": 166,
+      "workload": "workloads/daily_average_seed2.jsonl",
+      "input_distribution": {
+        "512": 616,
+        "2000": 727,
+        "4000": 785,
+        "6000": 447,
+        "8000": 307,
+        "10000": 118
+      },
+      "output_distribution": {
+        "128": 883,
+        "256": 1199,
+        "512": 631,
+        "1024": 287
+      }
+    },
+    {
+      "condition": "daily_average_seed3",
+      "load_level": "daily_average",
+      "seed": 3,
+      "requests": 3000,
+      "target_rate_rps": 4.62962962962963,
+      "realized_send_rate_rps": 4.62962962962963,
+      "duration_s": 648.0,
+      "mean_input_toks": 3843.344,
+      "mean_output_toks": 348.5013333333333,
+      "min_requests_per_gpu": 130,
+      "max_requests_per_gpu": 182,
+      "workload": "workloads/daily_average_seed3.jsonl",
+      "input_distribution": {
+        "512": 586,
+        "2000": 736,
+        "4000": 749,
+        "6000": 472,
+        "8000": 320,
+        "10000": 137
+      },
+      "output_distribution": {
+        "128": 888,
+        "256": 1188,
+        "512": 622,
+        "1024": 302
+      }
+    },
+    {
+      "condition": "busy_hour_seed1",
+      "load_level": "busy_hour",
+      "seed": 1,
+      "requests": 3000,
+      "target_rate_rps": 16.666666666666668,
+      "realized_send_rate_rps": 16.666666666666668,
+      "duration_s": 180.0,
+      "mean_input_toks": 3776.9706666666666,
+      "mean_output_toks": 351.01866666666666,
+      "min_requests_per_gpu": 127,
+      "max_requests_per_gpu": 172,
+      "workload": "workloads/busy_hour_seed1.jsonl",
+      "input_distribution": {
+        "512": 576,
+        "2000": 786,
+        "4000": 751,
+        "6000": 452,
+        "8000": 301,
+        "10000": 134
+      },
+      "output_distribution": {
+        "128": 893,
+        "256": 1191,
+        "512": 594,
+        "1024": 322
+      }
+    },
+    {
+      "condition": "busy_hour_seed2",
+      "load_level": "busy_hour",
+      "seed": 2,
+      "requests": 3000,
+      "target_rate_rps": 16.666666666666668,
+      "realized_send_rate_rps": 16.666666666666668,
+      "duration_s": 180.0,
+      "mean_input_toks": 3778.554666666667,
+      "mean_output_toks": 339.54133333333334,
+      "min_requests_per_gpu": 114,
+      "max_requests_per_gpu": 171,
+      "workload": "workloads/busy_hour_seed2.jsonl",
+      "input_distribution": {
+        "512": 597,
+        "2000": 790,
+        "4000": 735,
+        "6000": 419,
+        "8000": 297,
+        "10000": 162
+      },
+      "output_distribution": {
+        "128": 910,
+        "256": 1208,
+        "512": 606,
+        "1024": 276
+      }
+    },
+    {
+      "condition": "busy_hour_seed3",
+      "load_level": "busy_hour",
+      "seed": 3,
+      "requests": 3000,
+      "target_rate_rps": 16.666666666666668,
+      "realized_send_rate_rps": 16.666666666666668,
+      "duration_s": 180.0,
+      "mean_input_toks": 3735.6586666666667,
+      "mean_output_toks": 344.14933333333335,
+      "min_requests_per_gpu": 130,
+      "max_requests_per_gpu": 180,
+      "workload": "workloads/busy_hour_seed3.jsonl",
+      "input_distribution": {
+        "512": 623,
+        "2000": 742,
+        "4000": 769,
+        "6000": 435,
+        "8000": 296,
+        "10000": 135
+      },
+      "output_distribution": {
+        "128": 914,
+        "256": 1202,
+        "512": 581,
+        "1024": 303
+      }
+    },
+    {
+      "condition": "peak_2x_seed1",
+      "load_level": "peak_2x",
+      "seed": 1,
+      "requests": 3000,
+      "target_rate_rps": 33.333333333333336,
+      "realized_send_rate_rps": 33.333333333333336,
+      "duration_s": 90.0,
+      "mean_input_toks": 3732.538666666667,
+      "mean_output_toks": 340.0106666666667,
+      "min_requests_per_gpu": 131,
+      "max_requests_per_gpu": 168,
+      "workload": "workloads/peak_2x_seed1.jsonl",
+      "input_distribution": {
+        "512": 593,
+        "2000": 784,
+        "4000": 752,
+        "6000": 457,
+        "8000": 282,
+        "10000": 132
+      },
+      "output_distribution": {
+        "128": 923,
+        "256": 1203,
+        "512": 588,
+        "1024": 286
+      }
+    },
+    {
+      "condition": "peak_2x_seed2",
+      "load_level": "peak_2x",
+      "seed": 2,
+      "requests": 3000,
+      "target_rate_rps": 33.333333333333336,
+      "realized_send_rate_rps": 33.333333333333336,
+      "duration_s": 90.0,
+      "mean_input_toks": 3751.0826666666667,
+      "mean_output_toks": 335.36,
+      "min_requests_per_gpu": 128,
+      "max_requests_per_gpu": 172,
+      "workload": "workloads/peak_2x_seed2.jsonl",
+      "input_distribution": {
+        "512": 604,
+        "2000": 771,
+        "4000": 761,
+        "6000": 429,
+        "8000": 283,
+        "10000": 152
+      },
+      "output_distribution": {
+        "128": 930,
+        "256": 1231,
+        "512": 561,
+        "1024": 278
+      }
+    },
+    {
+      "condition": "peak_2x_seed3",
+      "load_level": "peak_2x",
+      "seed": 3,
+      "requests": 3000,
+      "target_rate_rps": 33.333333333333336,
+      "realized_send_rate_rps": 33.333333333333336,
+      "duration_s": 90.0,
+      "mean_input_toks": 3916.0693333333334,
+      "mean_output_toks": 341.71733333333333,
+      "min_requests_per_gpu": 132,
+      "max_requests_per_gpu": 176,
+      "workload": "workloads/peak_2x_seed3.jsonl",
+      "input_distribution": {
+        "512": 559,
+        "2000": 743,
+        "4000": 746,
+        "6000": 469,
+        "8000": 326,
+        "10000": 157
+      },
+      "output_distribution": {
+        "128": 895,
+        "256": 1217,
+        "512": 606,
+        "1024": 282
+      }
+    }
+  ]
+}

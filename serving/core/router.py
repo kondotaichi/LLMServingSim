@@ -3,6 +3,7 @@ import csv
 import json
 import os
 import random
+from collections import deque
 from .logger import get_logger
 from .memory_model import Device
 
@@ -86,6 +87,26 @@ class Router:
             ttft_formula_artifact_dir=None,
             counterfactual_request_id=None,
             counterfactual_target_instance_id=None,
+            counterfactual_force_local_request_id=None,
+            # SPEC: 2026-07-27_speculative_kv_transfer -- see
+            # experiments/2026-07-22_pp2_five_workloads for the comparison
+            # experiment these three flags drive. All default False/off and
+            # reproduce pre-existing behavior exactly when unset.
+            enable_scheduler_hide_kv_migration=False,
+            enable_formula_local_wait_point_estimate=False,
+            enable_speculative_kv_migration=False,
+            # SPEC: 2026-07-28_proactive_kv_prewarm -- Method C (capacity-
+            # pressure-triggered proactive KV pre-migration). Independent of
+            # Method A/B: request-agnostic background process, not a
+            # per-request routing decision. See
+            # experiments/2026-07-28_pp_schedule_conceal_and_speculative/
+            # reports/proactive_kv_prewarm_design.md. All default off/no-op.
+            enable_proactive_kv_prewarm=False,
+            proactive_kv_prewarm_pressure_threshold=0.8,
+            proactive_kv_prewarm_top_k=3,
+            proactive_kv_prewarm_lookback_ns=30_000_000_000.0,
+            proactive_kv_prewarm_cooldown_ns=2_000_000_000.0,
+            proactive_kv_prewarm_eval_interval_ns=200_000_000.0,
     ):
         # SPEC: stored for NEAREST_MIGRATE (see _maybe_migrate_and_redirect below).
         self.gpu_backbone_bandwidth_gbps = gpu_backbone_bandwidth_gbps
@@ -105,6 +126,65 @@ class Router:
             raise ValueError(
                 "Counterfactual request and target IDs must be set together"
             )
+        # SPEC: 2026-07-25_for_speculative_test -- force one specific
+        # request to wait at its home GPU instead of ever being redirected,
+        # regardless of predicted local wait or admissibility, to measure
+        # the true home-vs-redirect TTFT (the existing counterfactual_*
+        # pair above can only force a choice among already-admissible
+        # candidates, never home itself, since home is excluded from
+        # `admissible` precisely because it wasn't admissible in baseline).
+        self.counterfactual_force_local_request_id = (
+            counterfactual_force_local_request_id
+        )
+        if (counterfactual_request_id is not None
+                and counterfactual_force_local_request_id is not None):
+            raise ValueError(
+                "counterfactual_force_local_request_id cannot be combined "
+                "with counterfactual_request_id/counterfactual_target_instance_id"
+            )
+        # SPEC: 2026-07-27_speculative_kv_transfer -- Method A (parallelize
+        # KV migration transfer with target-scheduler queueing) and Method B
+        # (speculatively pre-transfer KV to a pinned candidate before the
+        # redirect decision is final). See
+        # experiments/2026-07-22_pp2_five_workloads/scripts/analyze_pp_comparison.py
+        # for the comparison these are built for.
+        self.enable_scheduler_hide_kv_migration = bool(enable_scheduler_hide_kv_migration)
+        self.enable_formula_local_wait_point_estimate = bool(
+            enable_formula_local_wait_point_estimate
+        )
+        self.enable_speculative_kv_migration = bool(enable_speculative_kv_migration)
+        if self.enable_speculative_kv_migration and not self.enable_scheduler_hide_kv_migration:
+            raise ValueError(
+                "enable_speculative_kv_migration requires "
+                "enable_scheduler_hide_kv_migration (speculative pre-transfer "
+                "only has a window to hide once the request is visible to the "
+                "target scheduler before its KV bytes arrive)"
+            )
+        # SPEC: 2026-07-28_proactive_kv_prewarm -- Method C. No cross-flag
+        # requirement on Method A/B: Method C discounts migration_bytes
+        # itself (see _apply_kv_migration_if_needed), so it pays off even
+        # with the pre-existing serial arrival_time_ns += migration_ns model.
+        self.enable_proactive_kv_prewarm = bool(enable_proactive_kv_prewarm)
+        self.proactive_kv_prewarm_pressure_threshold = float(
+            proactive_kv_prewarm_pressure_threshold
+        )
+        self.proactive_kv_prewarm_top_k = int(proactive_kv_prewarm_top_k)
+        self.proactive_kv_prewarm_lookback_ns = float(proactive_kv_prewarm_lookback_ns)
+        self.proactive_kv_prewarm_cooldown_ns = float(proactive_kv_prewarm_cooldown_ns)
+        self.proactive_kv_prewarm_eval_interval_ns = float(
+            proactive_kv_prewarm_eval_interval_ns
+        )
+        # instance_id -> {user_id -> deque[arrival_ns]}, recent-arrival
+        # history used only for the top-K frequency ranking above.
+        self._instance_user_history = {}
+        # user_id -> {input_hash_ids, input_toks, home_instance_id, seen_at_ns}
+        self._user_last_seen_content = {}
+        self._proactive_last_trigger_ns = {}   # instance_id -> ns (per-instance cooldown)
+        self._proactive_last_scan_ns = None    # global eval-interval throttle
+        # user_id -> {target_instance_id, source_instance_id, seeded_tokens, seeded_at_ns}
+        # At most one outstanding entry per user_id at a time.
+        self._proactive_migrations = {}
+        self.proactive_migration_log = []      # one row per trigger event (diagnostics)
         self.ttft_formula = None
         if self.adaptive_token_time_ns <= 0 or self.adaptive_iteration_time_ns <= 0:
             raise ValueError("Adaptive routing time estimates must be positive")
@@ -515,6 +595,52 @@ class Router:
             snapshot['capacity_pressure'] for snapshot in candidate_snapshots
         )
         req_data['_router_initial_capacity_recorded'] = True
+
+    def _record_user_activity(self, req_data, current_time_ns):
+        """Track per-user recent-arrival frequency and last-seen prompt
+        content, keyed by the request's HOME instance (assigned_instance_id
+        before any redirect logic runs). Feeds Method C's top-K frequency
+        ranking and destination-content seeding -- see
+        experiments/2026-07-28_pp_schedule_conceal_and_speculative/reports/
+        proactive_kv_prewarm_design.md. Idempotency-guarded the same way as
+        _record_initial_capacity_context: route_arrived_requests' loop can
+        re-run for the same request across deferred retries, but this must
+        record exactly once, at first arrival, before any redirect can
+        rewrite assigned_instance_id."""
+        if not self.enable_proactive_kv_prewarm:
+            return
+        if req_data.get('_router_user_activity_recorded', False):
+            return
+        req_data['_router_user_activity_recorded'] = True
+        geo = req_data.get('geo')
+        user_id = geo.get('user_id') if geo else None
+        home_instance_id = req_data.get('assigned_instance_id')
+        if user_id is None or home_instance_id is None:
+            return
+
+        history = self._instance_user_history.setdefault(home_instance_id, {})
+        history.setdefault(user_id, deque()).append(int(current_time_ns))
+
+        input_hash_ids = req_data.get('input_hash_ids')
+        if not input_hash_ids:
+            input_hash_ids = list(range(int(req_data.get('input_toks', 0))))
+        # Seed only the REUSABLE portion (reuse_prefix_toks, same field the
+        # real migrate_kv path uses -- router.py's _apply_kv_migration_if_needed
+        # requested_prefix), not the full prompt length. Seeding the whole
+        # prompt over-requests destination NPU memory for no benefit (a real
+        # migration would only ever ask for reuse_prefix_toks worth) and can
+        # exhaust capacity outright on tightly-packed topologies (found via
+        # PP1 verification: seed_migrated_prefix raised "not enough NPU
+        # memory" when this incorrectly passed the full 8000-token prompt).
+        reuse_prefix_toks = min(
+            int(req_data.get('reuse_prefix_toks', 0)), int(req_data.get('input_toks', 0))
+        )
+        self._user_last_seen_content[user_id] = {
+            'input_hash_ids': input_hash_ids,
+            'reuse_prefix_toks': reuse_prefix_toks,
+            'home_instance_id': home_instance_id,
+            'seen_at_ns': int(current_time_ns),
+        }
 
     def _record_decision_capacity_context(self, req_data, sched):
         """Persist selected-GPU capacity state immediately before admission."""
@@ -1142,7 +1268,29 @@ class Router:
                 'oneshot_decision_time_ns': int(current_time_ns),
             })
             self._clear_capacity_failure(req_data)
+            # SPEC: 2026-07-27_speculative_kv_transfer -- home won after all;
+            # any speculative pre-transfer pinned while we were waiting is
+            # wasted (never credited against a real migration).
+            pinned_id = req_data.get('_speculative_kv_target_instance_id')
+            if self.enable_speculative_kv_migration and pinned_id is not None:
+                pin_time_ns = int(req_data.get('_speculative_kv_pin_time_ns', current_time_ns))
+                geo['speculative_kv_wasted'] = 1
+                geo['speculative_kv_wasted_ns'] = max(0, int(current_time_ns) - pin_time_ns)
             return False
+
+        if (self.counterfactual_force_local_request_id is not None
+                and int(req_data.get('index'))
+                == int(self.counterfactual_force_local_request_id)):
+            # SPEC: 2026-07-25_for_speculative_test -- skip candidate
+            # scoring/redirect entirely and keep waiting at home, exactly
+            # like NEAREST_KV (policy A), to measure the real home-wait
+            # TTFT for a request the baseline redirected.
+            geo.update({
+                'oneshot_selected_route': 'undecided',
+                'oneshot_decision_reason':
+                    'counterfactual_force_local_awaiting_home_capacity',
+            })
+            return self._defer_capacity_retry(req_data, current_time_ns, home, home)
 
         second_id = int(geo['second_nearest_gpu_id'])
         if multi_candidate:
@@ -1206,12 +1354,32 @@ class Router:
             local_prediction = self.ttft_formula.predict(
                 self._ttft_formula_features(req_data, home), 'NEAREST_KV'
             )
-            local_wait = local_prediction['route_upper_ms'] * 1e6
-            local_total = (
-                local_prediction['ttft_ms']
-                - local_prediction['route_ms']
-                + local_prediction['route_upper_ms']
-            ) * 1e6 + float(geo.get('downlink_latency_ns', 0))
+            if self.enable_formula_local_wait_point_estimate:
+                # SPEC: 2026-07-27_speculative_kv_transfer -- route_upper_ms
+                # bakes in a fixed ~90th-percentile safety residual
+                # (route_positive_ms + residual_ms, residual_ms alone is
+                # ~9,700-10,300ms) that structurally always exceeds
+                # oneshot_max_local_wait_ns (1,000ms default), so
+                # deadline_exceeded below fires unconditionally on the very
+                # first tick regardless of actual conditions -- confirmed
+                # empirically (0/300 requests in
+                # experiments/2026-07-21-add_gpu_utilization ever entered the
+                # wait/retry loop). This flag makes local's estimate use the
+                # same plain point estimate (ttft_ms) that redirect
+                # candidates are already scored with below (redirect_total),
+                # instead of the inflated upper bound, so home vs. redirect
+                # is compared symmetrically and a genuine multi-tick wait
+                # becomes possible when local's point estimate is actually
+                # within budget.
+                local_wait = local_prediction['ttft_ms'] * 1e6
+                local_total = local_wait + float(geo.get('downlink_latency_ns', 0))
+            else:
+                local_wait = local_prediction['route_upper_ms'] * 1e6
+                local_total = (
+                    local_prediction['ttft_ms']
+                    - local_prediction['route_ms']
+                    + local_prediction['route_upper_ms']
+                ) * 1e6 + float(geo.get('downlink_latency_ns', 0))
 
         scored = []
         for target in admissible:
@@ -1243,7 +1411,11 @@ class Router:
                 'kv_migration': kv_migration,
                 'snapshot': snapshot,
             })
-        if candidate_selector == 'min_waiting':
+        proactive_pin = self._proactive_pin_candidate(req_data, scored, reuse_tokens)
+        if proactive_pin is not None:
+            selected_target = proactive_pin
+            geo['proactive_kv_prewarm_pin_applied'] = 1
+        elif candidate_selector == 'min_waiting':
             selected_target = min(
                 scored,
                 key=lambda item: (
@@ -1391,6 +1563,20 @@ class Router:
             })
 
         if not margin_wins and not deadline_exceeded:
+            # SPEC: 2026-07-27_speculative_kv_transfer -- Method B: pin the
+            # current best-scored candidate once, the first time this
+            # request is left waiting (never re-pinned to a different
+            # candidate on later re-evaluations, even if the model's ranking
+            # changes -- see MODEL_ITERATION_HISTORY.md on how unstable
+            # candidate rankings are between close candidates). The pin is a
+            # side channel only; margin_wins/deadline_exceeded/scored keep
+            # being recomputed fresh every call exactly as before.
+            if (self.enable_speculative_kv_migration
+                    and '_speculative_kv_target_instance_id' not in req_data):
+                req_data['_speculative_kv_target_instance_id'] = target_id
+                req_data['_speculative_kv_pin_time_ns'] = int(current_time_ns)
+                geo['speculative_kv_target_instance_id'] = target_id
+                geo['speculative_kv_pinned_at_ns'] = int(current_time_ns)
             geo.update({
                 'oneshot_selected_route': 'undecided',
                 'oneshot_decision_reason': 'awaiting_predicted_local',
@@ -1434,6 +1620,23 @@ class Router:
             'rerouted': 1,
             'migration_latency_ns': request_migration,
         })
+        # SPEC: 2026-07-27_speculative_kv_transfer -- Method B: credit
+        # elapsed pinned-speculation time only if we ended up actually
+        # migrating KV to the exact GPU we speculated to; otherwise the
+        # speculative transfer (if any) was wasted.
+        pinned_id = req_data.get('_speculative_kv_target_instance_id')
+        if self.enable_speculative_kv_migration and pinned_id is not None:
+            pin_time_ns = int(req_data.get('_speculative_kv_pin_time_ns', current_time_ns))
+            if mode == 'kv_handoff' and pinned_id == target_id:
+                req_data['_speculative_kv_elapsed_ns'] = max(
+                    0, int(current_time_ns) - pin_time_ns
+                )
+                geo['speculative_kv_wasted'] = 0
+            else:
+                req_data['_speculative_kv_elapsed_ns'] = 0
+                geo['speculative_kv_wasted'] = 1
+                geo['speculative_kv_wasted_ns'] = max(0, int(current_time_ns) - pin_time_ns)
+            geo['speculative_kv_elapsed_ns'] = req_data.get('_speculative_kv_elapsed_ns', 0)
         if mode == 'kv_handoff':
             self._attach_kv_handoff(req_data, home_id, target_id)
         else:
@@ -1892,6 +2095,78 @@ class Router:
         }
         return failover
 
+    def _proactive_pin_candidate(self, req_data, scored, reuse_tokens):
+        """Method C routing bind: if this user has an outstanding proactive
+        pre-warm, force the redirect decision to land on that same target
+        instead of letting the normal candidate selector (min_pressure/
+        min_waiting/model) pick independently based on cluster state at
+        decision time, which can drift from the cluster state the pre-warm
+        was chosen under. This is what turns a correct "who will come
+        back" prediction into a correct "where they land" outcome -- see
+        proactive_kv_prewarm_design.md.
+
+        Only binds when it can actually help: the pinned target must
+        still be in `scored` (i.e. still admissible right now -- it may
+        have filled up since the pre-warm fired) and its seeded content
+        must still be resident (checked directly against the live cache,
+        not the remembered seed count, since it may have been evicted by
+        unrelated real traffic in the meantime). Falls back to None
+        (normal selection) otherwise, so a stale/evicted pin never forces
+        a worse routing decision than the request would have gotten
+        anyway."""
+        if not self.enable_proactive_kv_prewarm or reuse_tokens <= 0:
+            return None
+        geo = req_data.get('geo')
+        user_id = geo.get('user_id') if geo else None
+        if user_id is None:
+            return None
+        pending = self._proactive_migrations.get(user_id)
+        if pending is None:
+            return None
+        item = next(
+            (s for s in scored if s['target_id'] == pending['target_instance_id']),
+            None,
+        )
+        if item is None:
+            return None
+        input_hash_ids = req_data.get('input_hash_ids') or list(
+            range(int(req_data.get('input_toks', 0)))
+        )
+        match = item['target'].memory.npu_prefix_cache.match_prefix(
+            input_hash_ids[:reuse_tokens]
+        )
+        if match.hit_length <= 0:
+            return None
+        return item
+
+    def _resolve_proactive_kv_prewarm(self, req_data, sched):
+        """Method C payoff Hook 1: called for EVERY routed request (not
+        just migrate_kv ones), right after the final target sched is known.
+        Pops any outstanding pre-warm entry for this user -- if the router's
+        independent redirect decision landed on the same instance we
+        pre-warmed, stash the seeded token count for Hook 2 (in
+        _apply_kv_migration_if_needed) to credit; otherwise it's a wasted
+        (free) pre-warm. Must run for every request so a pending entry
+        always gets resolved/expired, not just carried forward and
+        mis-credited to a later, unrelated request from the same user."""
+        if not self.enable_proactive_kv_prewarm:
+            return
+        geo = req_data.get('geo')
+        user_id = geo.get('user_id') if geo else None
+        if user_id is None:
+            return
+        pending = self._proactive_migrations.pop(user_id, None)
+        if pending is None:
+            return
+        if geo is None:
+            geo = {}
+            req_data['geo'] = geo
+        if sched.instance_id == pending['target_instance_id']:
+            req_data['_proactive_kv_prewarm_seeded_tokens'] = pending['seeded_tokens']
+            geo['proactive_kv_prewarm_seeded_tokens'] = pending['seeded_tokens']
+        else:
+            geo['proactive_kv_prewarm_wasted'] = 1
+
     def _apply_kv_migration_if_needed(self, req_data, sched):
         failover = req_data.get('failover')
         if not failover:
@@ -1943,7 +2218,27 @@ class Router:
 
         requested_prefix = int(failover.get('reuse_prefix_toks', 0))
         migrated_tokens = sched.memory.seed_migrated_prefix(input_hash_ids, requested_prefix)
-        migration_bytes = sched.memory.get_kv(migrated_tokens) * sched.num_npus
+
+        # SPEC: 2026-07-28_proactive_kv_prewarm -- Method C credit. If a
+        # background pre-warm (maybe_proactive_kv_prewarm) already seeded
+        # this user's content at THIS target before the request arrived,
+        # verify how much of it is still actually resident (match_prefix
+        # against the real current cache state, not the possibly-stale
+        # remembered seed count) and discount the billable token count
+        # accordingly. Defaults to 0 (no-op) unless
+        # --enable-proactive-kv-prewarm actually pre-warmed and landed on
+        # this same target -- see _resolve_proactive_kv_prewarm.
+        proactive_credit_tokens = 0
+        if self.enable_proactive_kv_prewarm:
+            seeded = int(req_data.get('_proactive_kv_prewarm_seeded_tokens', 0))
+            if seeded > 0:
+                match = sched.memory.npu_prefix_cache.match_prefix(
+                    input_hash_ids[:migrated_tokens]
+                )
+                proactive_credit_tokens = min(match.hit_length, seeded, migrated_tokens)
+        billable_tokens = max(0, migrated_tokens - proactive_credit_tokens)
+
+        migration_bytes = sched.memory.get_kv(billable_tokens) * sched.num_npus
         bandwidth_mbps = float(failover['kv_migration_bandwidth_gbps']) * 1000.0
         serialization_ns = round(8000.0 * migration_bytes / bandwidth_mbps) if bandwidth_mbps > 0 else 0
         # SPEC: fixed APN propagation (10cell_apn spec section 6) overrides
@@ -1969,7 +2264,29 @@ class Router:
             migration_ns = apn_leg_ns
 
         original_arrival = int(req_data['arrival_time_ns'])
-        req_data['arrival_time_ns'] = original_arrival + migration_ns
+        # SPEC: 2026-07-27_speculative_kv_transfer -- Method B credit. If this
+        # request had a pinned speculative transfer running while the
+        # redirect decision was still pending (_maybe_capacity_dynamic_formula_route),
+        # subtract however much of migration_ns that transfer already covered.
+        # Defaults to 0 (a no-op) unless --enable-speculative-kv-migration
+        # actually pinned and committed to *this* target.
+        elapsed_speculative_ns = min(
+            migration_ns,
+            max(0, int(req_data.get('_speculative_kv_elapsed_ns', 0))),
+        )
+        effective_migration_ns = migration_ns - elapsed_speculative_ns
+        if self.enable_scheduler_hide_kv_migration:
+            # Method A: the request becomes visible to the target scheduler's
+            # queue immediately (arrival_time_ns unchanged); only the actual
+            # prefill-compute start is gated on KV physically finishing, via
+            # kv_ready_time_ns (see Scheduler.schedule_base/schedule_with_prefix).
+            kv_ready_time_ns = original_arrival + effective_migration_ns
+        else:
+            # Pre-existing behavior: KV transfer and scheduler-queue waiting
+            # are strictly serial. Kept byte-for-byte identical when the
+            # flag is off.
+            req_data['arrival_time_ns'] = original_arrival + migration_ns
+            kv_ready_time_ns = req_data['arrival_time_ns']
         failover.update({
             '_kv_migration_applied': True,
             'kv_migration_tokens': migrated_tokens,
@@ -1977,11 +2294,22 @@ class Router:
             'kv_migration_latency_ns': migration_ns,
             'kv_migration_distance_latency_ns': distance_ns,
             'kv_migration_serialization_latency_ns': serialization_ns,
+            'kv_migration_effective_latency_ns': effective_migration_ns,
+            'kv_migration_speculative_hidden_ns': elapsed_speculative_ns,
         })
 
         geo = dict(req_data.get('geo') or {})
         geo['communication_latency_ns'] = geo.get('communication_latency_ns', 0) + migration_ns
         geo.setdefault('request_send_time_ns', original_arrival)
+        geo['kv_ready_time_ns'] = kv_ready_time_ns
+        if self.enable_proactive_kv_prewarm:
+            geo['proactive_kv_prewarm_hit_tokens'] = proactive_credit_tokens
+            geo['proactive_kv_prewarm_hit'] = int(proactive_credit_tokens > 0)
+            if proactive_credit_tokens > 0:
+                # Confirmed a hit -- overrides _resolve_proactive_kv_prewarm's
+                # default (which only knows the pre-warm *landed* here, not
+                # whether match_prefix still found it resident).
+                geo['proactive_kv_prewarm_wasted'] = 0
         req_data['geo'] = geo
 
     def _load_agentic_session(self, row, enable_prefix_caching):
@@ -2019,6 +2347,136 @@ class Router:
 
         return len(sub_reqs)
 
+    def _select_proactive_destination(self, exclude_instance_id):
+        """Pick the other prefill instance with the lowest capacity_pressure,
+        request-agnostic (used to pick where to speculatively pre-warm a
+        pressured instance's frequent users' cache -- see
+        proactive_kv_prewarm_design.md). Mirrors the min_pressure_no_model
+        selector's tie-break (lowest instance_id) for self-consistency with
+        the policy that actually decides real redirects."""
+        best_sched = None
+        best_pressure = None
+        dummy_req_data = {'output_toks': 0, 'index': None}
+        for sched in self.prefill_schedulers:
+            if sched.instance_id == exclude_instance_id:
+                continue
+            pressure = self._capacity_snapshot(sched, dummy_req_data)['capacity_pressure']
+            if (best_pressure is None or pressure < best_pressure
+                    or (pressure == best_pressure and sched.instance_id < best_sched.instance_id)):
+                best_sched = sched
+                best_pressure = pressure
+        return best_sched
+
+    def maybe_proactive_kv_prewarm(self, current_time_ns):
+        """Method C trigger: scan each prefill instance's capacity pressure;
+        when an instance crosses the configured threshold, speculatively
+        pre-migrate the KV cache of its most frequent recent users to a
+        less-loaded candidate, ahead of those users' next request arriving.
+        Request-agnostic -- called unconditionally from the main loop
+        alongside route_arrived_requests, not from a request's own routing
+        path. See proactive_kv_prewarm_design.md for the full design and
+        the accepted limitations (free transfer, no radix_tree.py changes,
+        content may be stale relative to the real cache)."""
+        if not self.enable_proactive_kv_prewarm:
+            return
+        if (self._proactive_last_scan_ns is not None
+                and current_time_ns - self._proactive_last_scan_ns
+                < self.proactive_kv_prewarm_eval_interval_ns):
+            return
+        self._proactive_last_scan_ns = current_time_ns
+
+        dummy_req_data = {'output_toks': 0, 'index': None}
+        for sched in self.prefill_schedulers:
+            instance_id = sched.instance_id
+            last_trigger = self._proactive_last_trigger_ns.get(instance_id)
+            if (last_trigger is not None
+                    and current_time_ns - last_trigger < self.proactive_kv_prewarm_cooldown_ns):
+                continue
+
+            snapshot = self._capacity_snapshot(sched, dummy_req_data)
+            if snapshot['capacity_pressure'] < self.proactive_kv_prewarm_pressure_threshold:
+                continue
+            self._proactive_last_trigger_ns[instance_id] = current_time_ns
+
+            history = self._instance_user_history.get(instance_id, {})
+            lookback_cutoff = current_time_ns - self.proactive_kv_prewarm_lookback_ns
+            counts = []
+            for user_id, timestamps in history.items():
+                while timestamps and timestamps[0] < lookback_cutoff:
+                    timestamps.popleft()
+                if timestamps:
+                    counts.append((len(timestamps), timestamps[-1], user_id))
+            if not counts:
+                continue
+            counts.sort(key=lambda item: (-item[0], -item[1], item[2]))
+            top_users = [user_id for _, _, user_id in counts[:self.proactive_kv_prewarm_top_k]]
+
+            for user_id in top_users:
+                if user_id in self._proactive_migrations:
+                    continue
+                content = self._user_last_seen_content.get(user_id)
+                if content is None:
+                    continue
+                if content['home_instance_id'] != instance_id:
+                    continue
+                if content['seen_at_ns'] < lookback_cutoff:
+                    continue
+
+                target_sched = self._select_proactive_destination(instance_id)
+                if target_sched is None:
+                    continue
+
+                try:
+                    seeded_tokens = target_sched.memory.seed_migrated_prefix(
+                        content['input_hash_ids'], content['reuse_prefix_toks'],
+                        mark_speculative=True,
+                    )
+                except RuntimeError:
+                    # Destination couldn't free enough NPU memory even after
+                    # eviction (e.g. a tightly-packed topology). Speculation
+                    # is meant to be a free, best-effort background attempt
+                    # -- never let it crash the simulation. Just skip this
+                    # user this trigger; a later scan may find more room.
+                    continue
+                if seeded_tokens <= 0:
+                    continue
+
+                self._proactive_migrations[user_id] = {
+                    'target_instance_id': target_sched.instance_id,
+                    'source_instance_id': instance_id,
+                    'seeded_tokens': seeded_tokens,
+                    'seeded_at_ns': int(current_time_ns),
+                }
+                estimated_transfer_ns = self._kv_migration_cost_ns(
+                    target_sched,
+                    {'reuse_prefix_toks': seeded_tokens, 'input_toks': seeded_tokens},
+                )
+                self.proactive_migration_log.append({
+                    'trigger_time_ns': int(current_time_ns),
+                    'source_instance_id': instance_id,
+                    'source_capacity_pressure': snapshot['capacity_pressure'],
+                    'source_slot_pressure': snapshot['slot_pressure'],
+                    'target_instance_id': target_sched.instance_id,
+                    'user_id': user_id,
+                    'user_recent_request_count': dict(
+                        (uid, cnt) for cnt, _, uid in counts
+                    ).get(user_id),
+                    'seeded_tokens': seeded_tokens,
+                    'estimated_transfer_ns': estimated_transfer_ns,
+                })
+
+    def save_proactive_migration_log(self, output_file):
+        """Write one row per Method C trigger event (not per request) --
+        diagnostics only, separate from the per-request columns appended to
+        the main requests.csv in scheduler.py."""
+        if not self.proactive_migration_log:
+            return
+        fieldnames = list(self.proactive_migration_log[0].keys())
+        with open(output_file, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(self.proactive_migration_log)
+
     def route_arrived_requests(self, current_time_ns):
         """Route requests that have arrived by current_time_ns to instances.
 
@@ -2032,6 +2490,7 @@ class Router:
                 break
 
             self._record_initial_capacity_context(req_data)
+            self._record_user_activity(req_data, current_time_ns)
 
             # >>> SPEC: redirect-on-capacity routing. Base router.py went
             # straight from the arrival check above to
@@ -2191,6 +2650,7 @@ class Router:
             ):
                 self._attach_local_kv_reuse(req_data, sched.instance_id)
             # <<< SPEC: fair-comparison KV baseline
+            self._resolve_proactive_kv_prewarm(req_data, sched)
             self._apply_kv_migration_if_needed(req_data, sched)
             self._release_adaptive_reservation(req_data)
             geo = req_data.get('geo')

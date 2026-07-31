@@ -594,30 +594,201 @@ request 51の悪化(372.5ms)を掘り下げると、GPU8が
 結果は`analysis/log1p_scheduler_formula_by_request.csv` /
 `analysis/log1p_scheduler_formula_summary.csv`に保存。
 
+## 14. 次アクション項目1の実施: guardrail/stage2_full_featuresを新formula上で再評価 — guardrailは改善したが、勝因は依然3件のrequestに集中
+
+前節末尾の次アクション1に対応。`scripts/recompute_candidate_predictions_new_formula.py`
+を新規作成し、161候補全件の`feature_*`列からitem 13の新production
+formula(log1p scheduler)で予測を再計算、`predicted_total_ttft_ms`等と
+派生ランク列(`model_ttft_rank`, `scheduler_clipped_ms`,
+`rank_delta_model_minus_pressure`)を更新した
+`analysis/counterfactual_candidate_actuals_new_formula.csv`を生成した。
+tie率は11.2%で、item 13の一次検証と一致することを確認済み。
+
+この新CSVに対し`scripts/evaluate_guardrail_new_formula.py`(item 9相当)
+と`scripts/evaluate_feature_expansion_new_formula.py`(item 11相当)を
+新規作成し、既存スクリプトと同一のnested CV/leave-one-request-out手順で
+再評価した。
+
+### Guardrail(item 9)の新formula上での結果(n=18)
+
+| 選択方法 | Top-1 | 平均regret | 中央値regret | p95 regret | 平均Spearman |
+|---|---:|---:|---:|---:|---:|
+| formula_new_formula_only(item 13と同一) | 44.4% | 42.3 ms | 1.5 ms | 217.0 ms | 0.314 |
+| pressure | 38.9% | 44.9 ms | 0.8 ms | 219.9 ms | 0.447 |
+| **guardrail_new_formula** | 38.9% | **21.2 ms** | 0.8 ms | **160.9 ms** | 0.394 |
+
+平均・p95 regretでpressureと式単体の両方を上回った。一方、選ばれる
+λは17/18foldで**200**に収束しており、item 9の旧formula版(17/18foldで
+λ=51200)から**2桁以上小さい**。旧formulaは予測レンジが縮退していた
+ため実質pressureのタイブレークにしかなっていなかったが、新formulaは
+候補間で意味のある予測差を出せるようになった分、pressure項の相対的な
+重みが大きく下がったと解釈できる。
+
+### 感度分析: 勝因は依然3件のrequestにほぼ全面依存
+
+`scripts/analyze_guardrail_flips_new_formula.py`でpressureとguardrailの
+選択が異なるrequestを洗い出し、item 10と同じ除外感度分析を行った。
+
+| 除外したrequest | n | pressure平均regret | guardrail平均regret |
+|---|---:|---:|---:|
+| なし | 18 | 44.9 ms | 21.2 ms |
+| 82のみ除外 | 17 | 34.2 ms | 22.1 ms |
+| 82+267 | 16 | 22.7 ms | 23.5 ms |
+| **82+267+156** | 15 | **15.1 ms** | **25.1 ms(pressureより悪化)** |
+
+request 82・267・156の3件を除くと、guardrailの平均regretはpressureより
+**悪化する**側に反転する。さらにrequest 67では、guardrailが式の判断
+(GPU8)に引きずられてpressureの正解(GPU7)から外れ、+155.9msの新規
+大外れを生んでいる。item 10で確認した「n=18のうち少数の同点裁定に
+勝敗が全面依存する」という脆さは、formulaの改善後も**同じ構造のまま
+残っている**。
+
+### Stage2系(item 11)の新formula上での結果(n=18)
+
+| バリアント | Top-1 | 平均regret | 中央値regret | p95 regret |
+|---|---:|---:|---:|---:|
+| formula_new_formula_only | 44.4% | 42.3 ms | 1.5 ms | 217.0 ms |
+| pressure | 38.9% | 44.9 ms | 0.8 ms | 219.9 ms |
+| stage2_base_new_formula | 16.7% | 15.0 ms | 11.6 ms | 37.8 ms |
+| stage2_expanded_new_formula | 16.7% | 32.2 ms | 15.8 ms | 150.4 ms |
+| stage2_full_features_new_formula | 16.7% | 30.7 ms | 10.2 ms | 83.6 ms |
+| guardrail_new_formula | 38.9% | 21.2 ms | 0.8 ms | 160.9 ms |
+
+新formula上でも、stage2系はTop-1が全バリアント中最低(16.7%、旧
+formula版のitem 7結果と同水準)のまま変わらない。stage2_baseが
+平均/p95では最良の数値を出しているが、それはitem 11で確認した
+「毎回そこそこ近いが、ほぼ正解を的中させない」性質の再現であり、
+Top-1の低さは新formulaへ切り替えても解消しなかった。
+
+### 結論
+
+新formula(log1p)は、guardrailのλが2桁以上小さい健全な値に収束する
+という形で、item 13が「単なるtie潰し」以上の実質的な改善であることを
+裏付けた。ただし**guardrailがpressureに勝つという結論自体は、item 10
+と全く同じ理由(少数foldへの依存)でまだ確定させられない**。stage2系は
+新formula上でも有望とは言えない。
+
+結果は`analysis/counterfactual_candidate_actuals_new_formula.csv`,
+`analysis/guardrail_new_formula_summary.csv` /
+`analysis/guardrail_new_formula_by_request.csv`,
+`analysis/feature_expansion_new_formula_summary.csv` /
+`analysis/feature_expansion_new_formula_by_request.csv`,
+`analysis/guardrail_flip_analysis_new_formula.csv` /
+`analysis/guardrail_flip_sensitivity_new_formula.csv`に保存。
+
+## 15. request 51型の限界の定量検証(item 2) — 「新規到着による真の鮮度劣化」と確定、running_reqsの過小評価という仮説は棄却
+
+前節末尾の次アクション2に対応。item 13で見つけたrequest 51(GPU8が
+決定時点で空いて見えたが実測は9候補中最悪の1078.7ms)が何によって
+起きているのかを、2つの仮説に分けて検証した。
+
+- 仮説A(モデルの重み付けの問題): `candidate_running_reqs`(決定時点で
+  既にそのGPU上で動いているdecode中request数)は`_ttft_formula_features()`
+  内で候補ごとに新鮮な値として取得されており(`router.py:1443-1503`、
+  home限定ではなく候補GPUごとに`_capacity_snapshot(candidate_sched, ...)`
+  を呼んでいる)、原理的には式に入力されている。しかし`compute_ms`は
+  この値を一切使わず(item 12で既知)、`route_ms`/`scheduler_ms`の回帰
+  係数がこの特徴量を過小評価しているだけではないか、という仮説。
+- 仮説B(真の時間的鮮度劣化): 決定時点のスナップショットには、
+  「決定した瞬間にまだ到着していないrequest」が原理的に反映され得ない。
+  redirect先GPUへ、決定時刻から実際にfirst tokenが出るまでの間に
+  新規requestが到着し、そのrequestとバッチを取り合うことで遅延が
+  生じているのではないか、という仮説。
+
+### 仮説Aの棄却
+
+全161候補について`candidate_running_reqs`と実測TTFTの相関を確認した
+ところ、相関はほぼ0(−0.010、predicted側とも0.311と弱い)。
+`candidate_running_reqs`を0〜2/2〜4/4〜6/6〜10のbucketに分けても、
+predicted_mean(734→768ms)はわずかに上がるが、actual_mean
+(766→787→776→781ms)はほぼ横ばいで、bucket間の差より各bucket内の
+ばらつき(std 100〜166ms)の方がはるかに大きい。**decision時点で
+見えているrunning_reqsの高さは、実測TTFTの大外れをほとんど説明しない。**
+
+### 仮説Bの確認: new_arrivals_during_windowとの相関0.803
+
+`scripts/analyze_staleness_new_arrivals.py`を新規作成。各候補について、
+実際のシミュレーション軌跡(counterfactual実行分は
+`counterfactual/results/request{r}_target{c}/requests.csv`、baseline
+選択分は`results/.../requests.csv`)から、当該candidateへの
+`router_decision_time_ns`(決定時刻)と自requestの
+`first_token_ready_time_ns`(実際にTTFTが確定した時刻)の間に、
+**同じcandidate GPUへ新たに到着した他のrequest数**
+(`gpu_id`一致 かつ `gpu_arrival_time_ns`がその区間内)を数えた。
+
+| new_arrivals_during_window | n | 平均abs誤差 | 中央値abs誤差 | 平均actual_ttft_rank(9候補中) |
+|---:|---:|---:|---:|---:|
+| 0 | 129 | 29.3 ms | 18.9 ms | 4.3 |
+| 1 | 26 | 177.7 ms | 162.8 ms | 7.4 |
+| 2 | 4 | 231.2 ms | 192.8 ms | 8.8 |
+| 3 | 2 | 685.5 ms | 685.5 ms | 9.0(=最悪) |
+
+`new_arrivals_during_window`とabs誤差の相関は**0.803**(vs
+`candidate_waiting_reqs`が0.377、`candidate_running_reqs`が−0.083)。
+決定時点で"空いて見える"候補(`candidate_waiting_reqs == 0`、156/161件)
+に限定しても、区間内に新規到着が1件以上あった29件は平均誤差197.4ms、
+無かった127件は平均誤差27.4msと、7倍以上の差がある。
+
+request 51/GPU8自身も、`router_decision_time_ns`〜`first_token_ready_time_ns`
+の1076msの間にrequest 54が同じGPU8へ新規到着しており、これが遅延の
+直接要因であることを個別にも確認した(他の大外れrequest175/263/265/82/
+90/203/49/267でも同様に、該当候補へ1〜2件の新規到着を確認済み。詳細は
+`analysis/staleness_new_arrivals_by_candidate.csv`)。
+
+### 結論: 仮説Bで確定。ただし対処は根本的に別種
+
+**この失敗モードは、特徴量の重み付けの問題ではなく、決定時点のスナップ
+ショットが原理的に持ち得ない未来情報(まだ到着していないrequest)に
+起因する真の時間的鮮度劣化である。** これはformula側の再学習や
+特徴量追加では解決できない。次の2方向のいずれか(または両方)が必要。
+
+1. ~~候補GPU向けの到着率特徴量を追加する~~ → 訂正: `router.py:1736-1751`
+   (`_annotate_ttft_formula_features`内の`_ttft_formula_candidate_features`)
+   を確認したところ、`home_arrivals_1s/5s`と`home_workload_share`は
+   **既に候補GPUごとに個別計算されており**、`_ttft_formula_features()`が
+   候補ごとに上書きしてformulaへ渡している(実データでも18件全requestで
+   候補間に差があることを確認済み、`counterfactual_candidate_actuals_new_formula.csv`)。
+   「候補向けに計算されていない」というここまでの記述は誤りだった。
+   ただしこれは過去1秒/5秒の**到着件数**という後ろ向きの窓であり、
+   request 51のように決定直後に初めて到着するrequestは原理的に反映
+   できない点は変わらない。前向きのrisk推定(到着率×window長からの
+   期待到着数など)は依然として未実装の余地がある。
+2. **決定と実行の間に再確認(reevaluation)を挟む**: redirect決定後、
+   実際にKV移送/リクエスト送信を実行する直前(または実行後の早い時点)
+   にcapacityを再チェックし、その時点で既に他のrequestが割り込んでいた
+   場合は再route/再評価する仕組み。item 3で述べた`_maybe_capacity_dynamic_formula_route`
+   のreevaluationループは「home/candidateがadmissibleになるまで」しか
+   再評価しないため、一度admissibleと判定されredirectが確定した後の
+   再確認は現状存在しない。
+
+結果は`analysis/staleness_new_arrivals_by_candidate.csv`,
+`analysis/staleness_new_arrivals_summary.csv`,
+`analysis/staleness_idle_candidates_summary.csv`に保存。
+
 ## 次にやるべきこと
 
-1. item 4(guardrail)・item 11(stage2_full_features)を、item 13で更新
-   したproduction formula(log1p scheduler)の上で再評価する。特にitem 12
-   /13の両方で「僅差候補の裁定はコイントスに近い」現象(request 82,
-   51)が繰り返し観測されているため、guardrailの大勝ちの一部が新formula
-   でも再現するか、それとも解消するかを確認する。
-2. item 13で見つかったrequest 51型の限界(`router_initial_*`スナップ
-   ショットの鮮度(staleness)が原因で、決定時に空いて見えた候補が
-   実行時に混雑していた)は、log1p化では解決しない別種の問題。
-   is-stale判定や再評価(reevaluation)の仕組みを見るか、item 9の
-   confidence fallbackで対応するか検討が必要。
+1. ~~item 4(guardrail)・item 11(stage2_full_features)を新formula上で
+   再評価する~~ → item 14で実施済み。guardrailは改善したが勝因は
+   3 requestに依存したまま。counterfactualデータをこれ以上増やす予定が
+   ないため、この脆さは新規シミュレーションなしには解消できない。
+   production投入判断は保留のまま。
+2. ~~item 13で見つかったrequest 51型の限界を調査する~~ → item 15で
+   定量確定。原因は`candidate_running_reqs`の過小評価ではなく
+   (相関−0.083でほぼ無関係)、決定時刻〜実際のfirst token確定時刻の
+   間に同じ候補GPUへ新規到着したrequestの有無(相関0.803)。次段階として
+   (a)候補GPU向け到着率特徴量の追加、(b)redirect確定後の再確認機構、の
+   どちらを実装するか、ユーザーと方針確認待ち。
 3. item 5(外れ値重視の損失関数)を同様にオフラインで検証する。
 4. guardrail(Top-1・中央値に強い)と`stage2_full_features`(平均・p95に
    強い)を組み合わせたハイブリッド
    (`score = stage2_full_features補正後TTFT + λ×capacity_pressure`)を、
    新formulaの予測を入力に使う形で試す価値がある。ただしitem 10・11・
-   12・13のいずれでも「少数のrequestにシグナルが集中している」問題が
-   繰り返し出ているため、結果は同様の慎重さで解釈する必要がある。
+   12・13・14のいずれでも「少数のrequestにシグナルが集中している」
+   問題が繰り返し出ているため、結果は同様の慎重さで解釈する必要がある。
 5. item 9(confidence fallback付きpolicy)は未着手のまま。
 6. `request90_target1` / `request90_target6`のFAILED status判定
    (ログ上は正常終了に見える)の原因調査は未着手。
-7. item 13でproduction artifact
-   (`experiments/2026-07-16_ttft_component_regression/analysis/
-   ttft_formula/`)を書き換えた。まだuncommitted。five-policy実験
-   (README.md)のpolicy Eを再実行して、実際のシミュレーション結果
-   (TTFT・GPU使用率)がこのオフライン評価と整合するかの確認は未実施。
+7. item 13のproduction artifact書き換えはコミット済み(`23d5360`)。
+   five-policy実験(README.md)のpolicy Eを再実行して、実際の
+   シミュレーション結果(TTFT・GPU使用率)がこのオフライン評価と
+   整合するかの確認は未実施。

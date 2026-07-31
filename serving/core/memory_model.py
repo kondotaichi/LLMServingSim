@@ -151,13 +151,28 @@ class MemoryModel():
         # K & V multiply 2
         return 2 * self.kv_dim * seq * self.n_layer * self.kv_fp // self.num_npus
 
-    def seed_migrated_prefix(self, token_ids, prefix_len):
+    def seed_migrated_prefix(self, token_ids, prefix_len, mark_speculative=False):
         """Install a migrated prefix in this instance's NPU prefix cache.
 
         This models KV-cache migration at block granularity. The simulator
         stores prefix-cache metadata rather than real KV tensors, so migration
         means pre-populating the destination radix tree and charging the caller
         for the corresponding KV bytes on the inter-GPU link.
+
+        mark_speculative (default False, preserves existing callers exactly):
+        set True for a proactive/unconfirmed pre-warm (see
+        Router.maybe_proactive_kv_prewarm) where no real request has claimed
+        this content yet. RadixCache.evict() is a pure LRU over
+        TreeNode.last_access_time, and _insert_helper stamps that to "now"
+        for every node it touches -- so a just-seeded speculative node would
+        otherwise look like the most-recently-used content and be evicted
+        LAST, the opposite of what we want. Backdating it here makes it
+        evict-first among leaves instead, without touching radix_tree.py's
+        eviction algorithm at all. If a real request later actually hits
+        this content (match_prefix), last_access_time gets naturally
+        refreshed to "now" by that lookup, so genuinely-used content reverts
+        to normal LRU behavior from that point on -- only content that's
+        never actually claimed stays evict-first.
         """
         if not self.enable_prefix_caching:
             raise RuntimeError("KV migration requires prefix caching on the target instance")
@@ -183,6 +198,10 @@ class MemoryModel():
 
         self.npu_prefix_cache.insert(token_ids[:prefix_len])
         self.apply_kv_cache_events()
+        if mark_speculative:
+            result = self.npu_prefix_cache.match_prefix(token_ids[:prefix_len])
+            if result.last_device_node is not None:
+                result.last_device_node.last_access_time = 0.0
         return prefix_len
     
     # get the total size of current kv cache for the request

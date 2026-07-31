@@ -54,20 +54,53 @@ def run(args: argparse.Namespace) -> int:
 
     output_rows = []
     user_cursor = defaultdict(int)
+    # SPEC: 2026-07-28_pp_schedule_conceal_and_speculative -- when the
+    # source carries a session_id (sharegpt.py's multi-turn mode), every
+    # turn of the same conversation must land on the same (region,
+    # user_id): a session is one real user, and its turns are the only
+    # place genuine repeated KV content comes from (see
+    # proactive_kv_prewarm investigation report). The region/user_id is
+    # picked once, on the session's first turn, and reused verbatim for
+    # its later turns -- without this, KV reuse has no real repeated
+    # content to key off even if the token content itself repeats.
+    # Sources without session_id (e.g. --fix-len, or older flat inputs)
+    # keep the original per-row-random assignment untouched.
+    # Real users can't send turn N+1 before turn N's reply exists, so a
+    # session's rows (already in chronological turn order in source_rows --
+    # sharegpt.py's _stream_turns only ever advances a session forward)
+    # must get strictly increasing arrival_time_ns. Independent per-row
+    # sampling (below) has no notion of this and can draw turn 2 an
+    # earlier slot than turn 1; MIN_TURN_GAP_NS clamps it forward instead.
+    MIN_TURN_GAP_NS = 500_000_000
+    session_assignment: dict[int, tuple[dict, int, int]] = {}
+    session_last_arrival: dict[int, int] = {}
     for request_id, source in enumerate(source_rows):
-        selected = rng.choices(choices, weights=weights, k=1)[0]
-        rid = region_id[selected["region"]]
-        local_user = user_cursor[rid] % args.users_per_region
-        user_cursor[rid] += 1
+        session_id = source.get("session_id")
+        if session_id is not None and session_id in session_assignment:
+            selected, rid, user_id = session_assignment[session_id]
+        else:
+            selected = rng.choices(choices, weights=weights, k=1)[0]
+            rid = region_id[selected["region"]]
+            local_user = user_cursor[rid] % args.users_per_region
+            user_cursor[rid] += 1
+            user_id = rid * args.users_per_region + local_user
+            if session_id is not None:
+                session_assignment[session_id] = (selected, rid, user_id)
         day_offset_ns = (
             selected["slot"] * 600 * 1_000_000_000
             + rng.randrange(600 * 1_000_000_000)
         )
         arrival_time_ns = int(day_offset_ns * args.duration_seconds / 86400.0)
+        if session_id is not None and session_id in session_last_arrival:
+            arrival_time_ns = max(
+                arrival_time_ns, session_last_arrival[session_id] + MIN_TURN_GAP_NS
+            )
+        if session_id is not None:
+            session_last_arrival[session_id] = arrival_time_ns
         row = dict(source)
         row.update({
             "request_id": request_id,
-            "user_id": rid * args.users_per_region + local_user,
+            "user_id": user_id,
             "region": selected["region"],
             "assigned_instance_id": rid,
             "gpu_id": rid,

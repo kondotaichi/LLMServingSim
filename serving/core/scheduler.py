@@ -116,6 +116,21 @@ class Scheduler:
             # scheduling start
             batch_req = [req for req in self.request if req.arrival <= current]
 
+            # Scheduler-hide KV migration overlap: a request whose KV bytes
+            # haven't physically arrived yet (kv_ready_time_ns in the
+            # future) is excluded from this scheduling attempt but stays
+            # untouched in self.request for the next one -- filtering here,
+            # before STEP 1-4 build/consume/delete-from-self.request below,
+            # avoids the request being marked "scheduled" and removed from
+            # self.request without ever getting a scheduled_tokens entry.
+            # A no-op for every request whose kv_ready_time_ns defaults to
+            # its own arrival (i.e. unless the flag is enabled) and for
+            # decode requests (never gated).
+            batch_req = [
+                req for req in batch_req
+                if not (req.is_prefill() and current < req.kv_ready_time_ns)
+            ]
+
             # max_num_seqs limits total running requests (vLLM behavior)
             running_reqs = sum(len(b.requests) for b in self.inflight)
             available_slots = max(0, int(self.max_num_seqs) - running_reqs)
@@ -383,6 +398,14 @@ class Scheduler:
 
             # scheduling start
             batch_req = [req for req in self.request if req.arrival <= current]
+
+            # Scheduler-hide KV migration overlap: see schedule_base's
+            # identical filter for the full rationale. No-op unless
+            # --enable-scheduler-hide-kv-migration is set.
+            batch_req = [
+                req for req in batch_req
+                if not (req.is_prefill() and current < req.kv_ready_time_ns)
+            ]
 
             # max_num_seqs limits total running requests (vLLM behavior)
             running_reqs = sum(len(b.requests) for b in self.inflight)
@@ -1158,7 +1181,18 @@ class Scheduler:
                                 'reuse_prefix_toks', 'kv_migration_tokens', 'kv_migration_bytes',
                                 'kv_migration_latency_ns', 'kv_migration_distance_latency_ns',
                                 'kv_migration_serialization_latency_ns',
-                                'kv_migration_bandwidth_gbps', 'kv_migration_distance_m'])
+                                'kv_migration_bandwidth_gbps', 'kv_migration_distance_m',
+                                # --- Scheduler-hide KV migration overlap (Method A) ---
+                                'kv_ready_time_ns', 'kv_migration_effective_latency_ns',
+                                'kv_migration_speculative_hidden_ns',
+                                # --- Speculative KV pre-transfer (Method B) ---
+                                'speculative_kv_target_instance_id', 'speculative_kv_pin_time_ns',
+                                'speculative_kv_elapsed_ns', 'speculative_kv_wasted',
+                                'speculative_kv_wasted_ns',
+                                # --- Proactive KV pre-warm (Method C) ---
+                                'proactive_kv_prewarm_hit', 'proactive_kv_prewarm_hit_tokens',
+                                'proactive_kv_prewarm_seeded_tokens', 'proactive_kv_prewarm_wasted',
+                                'proactive_kv_prewarm_pin_applied'])
 
             # Write each request's information
             for req in self.done:
@@ -1336,6 +1370,19 @@ class Scheduler:
                     req.kv_migration_serialization_latency_ns,
                     req.kv_migration_bandwidth_gbps,
                     req.kv_migration_distance_m,
+                    req.kv_ready_time_ns,
+                    req.kv_migration_effective_latency_ns,
+                    req.kv_migration_speculative_hidden_ns,
+                    req.speculative_kv_target_instance_id,
+                    req.speculative_kv_pin_time_ns,
+                    req.speculative_kv_elapsed_ns,
+                    req.speculative_kv_wasted,
+                    req.speculative_kv_wasted_ns,
+                    req.proactive_kv_prewarm_hit,
+                    req.proactive_kv_prewarm_hit_tokens,
+                    req.proactive_kv_prewarm_seeded_tokens,
+                    req.proactive_kv_prewarm_wasted,
+                    req.proactive_kv_prewarm_pin_applied,
                 ])
 
 

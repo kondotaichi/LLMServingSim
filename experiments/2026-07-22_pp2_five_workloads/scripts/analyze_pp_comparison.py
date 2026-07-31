@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
-"""Analyze completed PP1/PP2 workload pairs and generate interim figures."""
+"""Analyze completed PP1/PP2/scheduler-hide/speculative workload arms and
+generate comparison figures.
 
+Arms are added incrementally as their simulations complete (see
+.claude/plans/elegant-dazzling-lobster.md): PP1 and PP2 are the original
+baseline pair; "PP2 + scheduler-hide" (Method A) and "PP2 + speculative"
+(Method B) are new arms layered on top of PP2. completed_pairs() tolerates
+any subset of ARMS being present per workload so partial rollout still
+produces a report.
+"""
+
+import os
 from pathlib import Path
 
 import matplotlib
@@ -13,9 +23,28 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
-ANALYSIS = ROOT / "analysis"
-FIGURES = ROOT / "figures"
-REPORTS = ROOT / "reports"
+# Output location for figures/analysis/reports defaults to ROOT (this
+# workload directory), matching the original behavior. Override with
+# ANALYSIS_OUTPUT_ROOT to write a comparison snapshot elsewhere (e.g. a
+# separate write-up directory) without touching results/ or ROOT's own
+# figures/analysis/reports.
+OUTPUT_ROOT = Path(os.environ.get("ANALYSIS_OUTPUT_ROOT", ROOT))
+ANALYSIS = OUTPUT_ROOT / "analysis"
+FIGURES = OUTPUT_ROOT / "figures"
+REPORTS = OUTPUT_ROOT / "reports"
+
+
+def _results_dir(directory):
+    """Per-arm results directory. The Method A/B arms' raw simulation
+    output (results/pp2_scheduler_hide, results/pp2_spec_scheduler_hide)
+    was relocated under the write-up directory (ANALYSIS_OUTPUT_ROOT) for
+    self-containment; PP1/PP2 baseline output stays under ROOT/results.
+    Checks OUTPUT_ROOT first so a moved arm is found there, falling back
+    to ROOT for arms that were never relocated."""
+    moved = OUTPUT_ROOT / "results" / directory
+    if moved.exists():
+        return moved
+    return RESULTS / directory
 
 WORKLOAD_ORDER = [
     "input512_reuse00",
@@ -41,12 +70,28 @@ WORKLOAD_LABELS = {
     "input10000_reuse05": "10000 / reuse 50%",
     "mixed_rate3p33_seed1": "Mixed / burst",
 }
-ARMS = ["PP1: 10 replicas", "PP2: 5 groups"]
-ARM_DIRS = dict(zip(ARMS, ["pp1", "pp2"]))
+ARMS = [
+    "PP1: 10 replicas",
+    "PP2: 5 groups",
+    "PP2 + scheduler-hide",
+    "PP2 + speculative",
+]
+ARM_DIRS = dict(zip(
+    ARMS, ["pp1", "pp2", "pp2_scheduler_hide", "pp2_spec_scheduler_hide"]
+))
 ARM_COLORS = {
     "PP1: 10 replicas": "#4c78a8",
     "PP2: 5 groups": "#f58518",
+    "PP2 + scheduler-hide": "#54a24b",
+    "PP2 + speculative": "#b279a2",
 }
+# Arms where KV migration transfer is overlapped with target-scheduler
+# queueing (--enable-scheduler-hide-kv-migration) instead of serialized.
+# queueing_before_ttft_ns already subsumes kv_migration_effective_latency_ns
+# for these arms (admission cannot happen before kv_ready_time_ns), so
+# breakdown() nets the overlap out of both the "KV transfer" bar and the
+# "Router queue" residual instead of double-counting wall-clock time.
+SCHEDULER_HIDE_ARMS = {"PP2 + scheduler-hide", "PP2 + speculative"}
 COMPONENTS = [
     ("Router queue", "#c74b3a"),
     ("Scheduler queue", "#e79b37"),
@@ -62,7 +107,7 @@ def completed_pairs():
     for workload in WORKLOAD_ORDER:
         frames = {}
         for arm, directory in ARM_DIRS.items():
-            path = RESULTS / directory / workload / "requests.csv"
+            path = _results_dir(directory) / workload / "requests.csv"
             if not path.exists():
                 missing.append((workload, arm, "missing"))
                 continue
@@ -71,23 +116,62 @@ def completed_pairs():
                 missing.append((workload, arm, f"{len(frame)} requests"))
                 continue
             frames[arm] = frame
-        if len(frames) == 2:
+        if frames:
             pairs[workload] = frames
     return pairs, missing
 
 
-def breakdown(frame):
+def _arms_present(container, workload=None):
+    """Return the subset of ARMS actually present, in ARMS order.
+
+    `container` is either a {workload: {arm: frame}} pairs dict (pass
+    `workload` to scope to one) or a summary/components DataFrame with an
+    `arm` column (pass `workload=None`).
+    """
+    if workload is not None:
+        present = set(container[workload].keys())
+    else:
+        present = set(container.arm.unique())
+    return [arm for arm in ARMS if arm in present]
+
+
+def _grouped_bar_offsets(arms_present, width_total=0.8):
+    n = max(1, len(arms_present))
+    width = width_total / n
+    offsets = (np.arange(n) - (n - 1) / 2) * width
+    return width, offsets
+
+
+def breakdown(frame, scheduler_hide=False):
     communication = frame.communication_latency_ns / 1e6
     transfer = frame.kv_migration_latency_ns / 1e6
     scheduler = frame.queueing_before_ttft_ns / 1e6
     prefill = frame.prefill_service_ns / 1e6
     total = frame.e2e_ttft_ns / 1e6
-    router = (total - scheduler - prefill - communication).clip(lower=0)
     other_communication = (communication - transfer).clip(lower=0)
+
+    if scheduler_hide and "kv_migration_effective_latency_ns" in frame.columns:
+        # Method A/B: queueing_before_ttft_ns already covers however much of
+        # the KV transfer overlapped with scheduler waiting (by
+        # construction, admission never happens before kv_ready_time_ns).
+        # Only the portion of the *effective* (post-speculative-credit)
+        # transfer that stuck out past scheduler queueing is still exposed
+        # on the critical path; that's usually ~0. Netting communication
+        # down to this exposed sliver (instead of the full, non-overlap-
+        # aware transfer) keeps the router-queue residual honest.
+        effective_transfer = frame.kv_migration_effective_latency_ns / 1e6
+        exposed_transfer = (effective_transfer - scheduler).clip(lower=0)
+        communication_for_router = other_communication + exposed_transfer
+        transfer_display = exposed_transfer
+    else:
+        communication_for_router = communication
+        transfer_display = transfer
+
+    router = (total - scheduler - prefill - communication_for_router).clip(lower=0)
     return {
         "Router queue": router.mean(),
         "Scheduler queue": scheduler.mean(),
-        "KV transfer": transfer.mean(),
+        "KV transfer": transfer_display.mean(),
         "Compute / prefill": prefill.mean(),
         "RTT / other comm": other_communication.mean(),
         "Total": total.mean(),
@@ -106,7 +190,7 @@ def summarize(pairs):
             start = frame.request_send_time_ns.min()
             end = frame.request_end_time_ns.max()
             duration_s = (end - start) / 1e9
-            values = breakdown(frame)
+            values = breakdown(frame, scheduler_hide=arm in SCHEDULER_HIDE_ARMS)
             rows.append({
                 "workload": workload,
                 "workload_label": WORKLOAD_LABELS[workload],
@@ -133,7 +217,7 @@ def summarize(pairs):
                 **values,
             })
 
-            gpu_path = RESULTS / ARM_DIRS[arm] / workload / "gpus.csv"
+            gpu_path = _results_dir(ARM_DIRS[arm]) / workload / "gpus.csv"
             gpu = pd.read_csv(gpu_path)
             gpu_rows.append({
                 "workload": workload,
@@ -151,25 +235,39 @@ def summarize(pairs):
     summary = pd.DataFrame(rows)
     components = pd.DataFrame(breakdown_rows)
     gpu_summary = pd.DataFrame(gpu_rows)
-    paired_rows = []
-    for workload in pairs:
+    return summary, components, gpu_summary
+
+
+def pairwise_vs_baseline(summary, baseline_arm):
+    """One row per (workload, comparison arm) other than baseline_arm,
+    for every workload where baseline_arm is present. Positive
+    *_improvement_pct means the comparison arm is better than baseline."""
+    rows = []
+    for workload in summary.workload.unique():
         group = summary[summary.workload.eq(workload)].set_index("arm")
-        pp1 = group.loc[ARMS[0]]
-        pp2 = group.loc[ARMS[1]]
-        paired_rows.append({
-            "workload": workload,
-            "workload_label": WORKLOAD_LABELS[workload],
-            "mean_ttft_improvement_pct": (pp1.mean_ttft_ms - pp2.mean_ttft_ms) / pp1.mean_ttft_ms * 100,
-            "p95_ttft_improvement_pct": (pp1.p95_ttft_ms - pp2.p95_ttft_ms) / pp1.p95_ttft_ms * 100,
-            "p99_ttft_improvement_pct": (pp1.p99_ttft_ms - pp2.p99_ttft_ms) / pp1.p99_ttft_ms * 100,
-            "scheduler_queue_reduction_pct": (pp1.mean_scheduler_queue_ms - pp2.mean_scheduler_queue_ms) / pp1.mean_scheduler_queue_ms * 100,
-            "tpot_change_pct": (pp2.mean_tpot_ms - pp1.mean_tpot_ms) / pp1.mean_tpot_ms * 100,
-            "completion_change_pct": (pp2.mean_completion_ms - pp1.mean_completion_ms) / pp1.mean_completion_ms * 100,
-            "request_throughput_change_pct": (pp2.request_throughput_rps - pp1.request_throughput_rps) / pp1.request_throughput_rps * 100,
-            "pp1_redirects": int(pp1.redirects),
-            "pp2_redirects": int(pp2.redirects),
-        })
-    return summary, components, gpu_summary, pd.DataFrame(paired_rows)
+        if baseline_arm not in group.index:
+            continue
+        baseline = group.loc[baseline_arm]
+        for arm in group.index:
+            if arm == baseline_arm:
+                continue
+            other = group.loc[arm]
+            rows.append({
+                "workload": workload,
+                "workload_label": WORKLOAD_LABELS[workload],
+                "baseline_arm": baseline_arm,
+                "comparison_arm": arm,
+                "mean_ttft_improvement_pct": (baseline.mean_ttft_ms - other.mean_ttft_ms) / baseline.mean_ttft_ms * 100,
+                "p95_ttft_improvement_pct": (baseline.p95_ttft_ms - other.p95_ttft_ms) / baseline.p95_ttft_ms * 100,
+                "p99_ttft_improvement_pct": (baseline.p99_ttft_ms - other.p99_ttft_ms) / baseline.p99_ttft_ms * 100,
+                "scheduler_queue_reduction_pct": (baseline.mean_scheduler_queue_ms - other.mean_scheduler_queue_ms) / baseline.mean_scheduler_queue_ms * 100,
+                "tpot_change_pct": (other.mean_tpot_ms - baseline.mean_tpot_ms) / baseline.mean_tpot_ms * 100,
+                "completion_change_pct": (other.mean_completion_ms - baseline.mean_completion_ms) / baseline.mean_completion_ms * 100,
+                "request_throughput_change_pct": (other.request_throughput_rps - baseline.request_throughput_rps) / baseline.request_throughput_rps * 100,
+                "baseline_redirects": int(baseline.redirects),
+                "comparison_redirects": int(other.redirects),
+            })
+    return pd.DataFrame(rows)
 
 
 def plot_percentiles(summary):
@@ -179,23 +277,25 @@ def plot_percentiles(summary):
         ("p95_ttft_ms", "p95"),
         ("p99_ttft_ms", "p99"),
     ]
+    workloads = list(summary.workload.unique())
+    arms_present = _arms_present(summary)
+    width, offsets = _grouped_bar_offsets(arms_present)
     fig, axes = plt.subplots(2, 2, figsize=(15, 10), sharex=True)
-    x = np.arange(len(summary.workload.unique()))
-    width = 0.36
+    x = np.arange(len(workloads))
     for axis, (metric, title) in zip(axes.flat, metrics):
-        for offset, arm in zip((-width / 2, width / 2), ARMS):
-            selected = summary[summary.arm.eq(arm)].set_index("workload").reindex(summary.workload.unique())
+        for offset, arm in zip(offsets, arms_present):
+            selected = summary[summary.arm.eq(arm)].set_index("workload").reindex(workloads)
             bars = axis.bar(x + offset, selected[metric], width, color=ARM_COLORS[arm], label=arm)
             axis.bar_label(bars, fmt="%.0f", padding=2, fontsize=8)
         axis.set_title(f"{title} E2E TTFT")
         axis.set_ylabel("ms")
         axis.grid(axis="y", color="#d9d2c8", linewidth=0.8)
         axis.set_axisbelow(True)
-    labels = [WORKLOAD_LABELS[w] for w in summary.workload.unique()]
+    labels = [WORKLOAD_LABELS[w] for w in workloads]
     for axis in axes[-1]:
         axis.set_xticks(x, labels, rotation=18, ha="right")
     axes[0, 0].legend(frameon=False)
-    fig.suptitle("PP1 replicas vs PP2 groups: E2E TTFT percentiles", fontsize=17)
+    fig.suptitle("PP arms: E2E TTFT percentiles", fontsize=17)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(FIGURES / "ttft_percentiles.png", dpi=180, bbox_inches="tight", facecolor="#faf8f4")
     plt.close(fig)
@@ -214,9 +314,11 @@ def plot_breakdown(components):
     nrows = int(np.ceil(len(workloads) / ncols))
     fig, axes = plt.subplots(nrows, ncols, figsize=(16, 5 * nrows), squeeze=False)
     for axis, workload in zip(axes.flat, workloads):
-        group = components[components.workload.eq(workload)].set_index("arm").reindex(ARMS)
-        positions = np.arange(len(ARMS)) * 1.45
-        left = np.zeros(len(ARMS))
+        workload_components = components[components.workload.eq(workload)]
+        arms_here = _arms_present(workload_components)
+        group = workload_components.set_index("arm").reindex(arms_here)
+        positions = np.arange(len(arms_here)) * 1.45
+        left = np.zeros(len(arms_here))
         maximum = group.Total.max()
         for component, color in COMPONENTS:
             widths = group[component].to_numpy()
@@ -238,7 +340,7 @@ def plot_breakdown(components):
             )
             axis.text(0, position + 0.43, details, va="center", fontsize=7.5,
                       color="#38332d")
-        axis.set_yticks(positions, ARMS)
+        axis.set_yticks(positions, arms_here)
         axis.set_ylim(positions[-1] + 0.72, -0.48)
         axis.set_xlim(0, maximum * 1.22)
         axis.set_title(WORKLOAD_LABELS[workload])
@@ -250,33 +352,51 @@ def plot_breakdown(components):
         axis.set_visible(False)
     handles, labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=len(COMPONENTS), frameon=False)
-    fig.suptitle("PP1 vs PP2: mean E2E TTFT component breakdown", fontsize=17)
+    fig.suptitle("PP arms: mean E2E TTFT component breakdown", fontsize=17)
     fig.tight_layout(rect=(0, 0.07, 1, 0.96))
     fig.savefig(FIGURES / "ttft_breakdown.png", dpi=180, bbox_inches="tight", facecolor="#faf8f4")
     plt.close(fig)
 
 
 def plot_cdfs(pairs):
-    ncols = 2
-    nrows = int(np.ceil(len(pairs) / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(14, 5 * nrows), squeeze=False)
-    for axis, (workload, frames) in zip(axes.flat, pairs.items()):
-        for arm in ARMS:
-            values = np.sort(frames[arm].e2e_ttft_ns.to_numpy() / 1e6)
+    workload = "input8000_reuse025"
+    if workload not in pairs:
+        return
+    cohorts = [
+        ("All requests", lambda frame: frame.index == frame.index,
+         "input8000_reuse025_ttft_cdf_all.png"),
+        ("Redirected requests only", lambda frame: frame.rerouted.astype(bool),
+         "input8000_reuse025_ttft_cdf_redirected.png"),
+        ("Non-redirected requests only", lambda frame: ~frame.rerouted.astype(bool),
+         "input8000_reuse025_ttft_cdf_not_redirected.png"),
+    ]
+    arm_labels = [
+        ("PP2: 5 groups", "PP=2"),
+        ("PP1: 10 replicas", "PP=1"),
+    ]
+    frames = pairs[workload]
+    for title, selector, filename in cohorts:
+        fig, axis = plt.subplots(figsize=(8.5, 5.2))
+        for arm, label in arm_labels:
+            if arm not in frames:
+                continue
+            selected = frames[arm].loc[selector(frames[arm])]
+            if selected.empty:
+                continue
+            values = np.sort(selected.e2e_ttft_ns.to_numpy() / 1e6)
             cdf = np.arange(1, len(values) + 1) / len(values)
-            axis.plot(values, cdf, linewidth=2.2, color=ARM_COLORS[arm], label=arm)
-        axis.set_title(WORKLOAD_LABELS[workload])
+            axis.plot(values, cdf, linewidth=2.2, color=ARM_COLORS[arm],
+                      label=f"{label} (n={len(selected)})")
+        axis.set_title(f"Input 8000 / reuse 25%: {title}", fontsize=15)
         axis.set_xlabel("E2E TTFT (ms)")
         axis.set_ylabel("CDF")
         axis.grid(color="#d9d2c8", linewidth=0.8)
         axis.set_axisbelow(True)
-    for axis in axes.flat[len(pairs):]:
-        axis.set_visible(False)
-    axes[0, 0].legend(frameon=False)
-    fig.suptitle("PP1 vs PP2: per-request E2E TTFT CDF", fontsize=17)
-    fig.tight_layout(rect=(0, 0, 1, 0.96))
-    fig.savefig(FIGURES / "ttft_cdf.png", dpi=180, bbox_inches="tight", facecolor="#faf8f4")
-    plt.close(fig)
+        axis.legend(frameon=False)
+        fig.tight_layout()
+        fig.savefig(FIGURES / filename, dpi=180, bbox_inches="tight",
+                    facecolor="#faf8f4")
+        plt.close(fig)
 
 
 def plot_tradeoffs(summary):
@@ -287,11 +407,12 @@ def plot_tradeoffs(summary):
         ("request_throughput_rps", "Request throughput", "requests/s"),
     ]
     workloads = list(summary.workload.unique())
+    arms_present = _arms_present(summary)
+    width, offsets = _grouped_bar_offsets(arms_present)
     x = np.arange(len(workloads))
-    width = 0.36
     fig, axes = plt.subplots(2, 2, figsize=(15, 10), sharex=True)
     for axis, (metric, title, unit) in zip(axes.flat, metrics):
-        for offset, arm in zip((-width / 2, width / 2), ARMS):
+        for offset, arm in zip(offsets, arms_present):
             group = summary[summary.arm.eq(arm)].set_index("workload").reindex(workloads)
             axis.bar(x + offset, group[metric], width, color=ARM_COLORS[arm], label=arm)
         axis.set_title(title)
@@ -302,7 +423,7 @@ def plot_tradeoffs(summary):
     for axis in axes[-1]:
         axis.set_xticks(x, labels, rotation=18, ha="right")
     axes[0, 0].legend(frameon=False)
-    fig.suptitle("PP2 TTFT benefit vs decode/completion trade-off", fontsize=17)
+    fig.suptitle("PP arms: TTFT benefit vs decode/completion trade-off", fontsize=17)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(FIGURES / "latency_throughput_tradeoff.png", dpi=180,
                 bbox_inches="tight", facecolor="#faf8f4")
@@ -311,14 +432,15 @@ def plot_tradeoffs(summary):
 
 def plot_utilization(gpu_summary):
     workloads = list(gpu_summary.workload.unique())
+    arms_present = _arms_present(gpu_summary)
+    width, offsets = _grouped_bar_offsets(arms_present)
     x = np.arange(len(workloads))
-    width = 0.36
     fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
     for axis, metric, title, ylabel in (
         (axes[0], "mean_utilization_pct", "Mean logical-instance utilization", "%"),
         (axes[1], "cv_utilization", "Utilization imbalance", "coefficient of variation"),
     ):
-        for offset, arm in zip((-width / 2, width / 2), ARMS):
+        for offset, arm in zip(offsets, arms_present):
             group = gpu_summary[gpu_summary.arm.eq(arm)].set_index("workload").reindex(workloads)
             axis.bar(x + offset, group[metric], width, color=ARM_COLORS[arm], label=arm)
         axis.set_xticks(x, [WORKLOAD_LABELS[w] for w in workloads], rotation=18, ha="right")
@@ -327,7 +449,7 @@ def plot_utilization(gpu_summary):
         axis.grid(axis="y", color="#d9d2c8", linewidth=0.8)
         axis.set_axisbelow(True)
     axes[0].legend(frameon=False)
-    fig.suptitle("Logical-instance utilization (PP2 is not per-stage utilization)", fontsize=16)
+    fig.suptitle("Logical-instance utilization (PP2 arms are not per-stage utilization)", fontsize=16)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(FIGURES / "logical_instance_utilization.png", dpi=180,
                 bbox_inches="tight", facecolor="#faf8f4")
@@ -379,7 +501,7 @@ def summarize_input8000_redirect_breakdown(pairs):
                     "cohort": cohort,
                     "arm": arm,
                     "requests": len(selected),
-                    **breakdown(selected),
+                    **breakdown(selected, scheduler_hide=arm in SCHEDULER_HIDE_ARMS),
                 })
     return pd.DataFrame(rows)
 
@@ -389,13 +511,14 @@ def plot_input8000_redirects(summary):
         return
     workloads = list(summary.workload.unique())
     cohorts = ["All requests", "Redirected only", "Not redirected"]
+    arms_present = _arms_present(summary)
+    width, offsets = _grouped_bar_offsets(arms_present)
     fig, axes = plt.subplots(1, len(workloads), figsize=(7.5 * len(workloads), 6),
                              squeeze=False)
     x = np.arange(len(cohorts))
-    width = 0.36
     for axis, workload in zip(axes.flat, workloads):
         workload_rows = summary[summary.workload.eq(workload)]
-        for offset, arm in zip((-width / 2, width / 2), ARMS):
+        for offset, arm in zip(offsets, arms_present):
             group = workload_rows[workload_rows.arm.eq(arm)].set_index("cohort").reindex(cohorts)
             bars = axis.bar(x + offset, group.mean_ttft_ms, width,
                             color=ARM_COLORS[arm], label=arm)
@@ -429,22 +552,36 @@ def plot_input8000_redirect_breakdown(summary):
             return f"{value:.2f}"
         return f"{value:.1f}"
 
-    workloads = list(summary.workload.unique())
-    cohorts = ["All requests", "Redirected only", "Not redirected"]
-    fig, axes = plt.subplots(1, len(workloads), figsize=(9 * len(workloads), 10),
-                             squeeze=False)
-    for axis, workload in zip(axes.flat, workloads):
-        group = summary[summary.workload.eq(workload)].copy()
-        positions = np.arange(len(cohorts) * len(ARMS)) * 1.15
-        labels = []
+    workload = "input8000_reuse025"
+    cohort_outputs = [
+        ("All requests", "All requests", "input8000_reuse025_ttft_breakdown_all.png"),
+        ("Redirected only", "Redirected requests only",
+         "input8000_reuse025_ttft_breakdown_redirected.png"),
+        ("Not redirected", "Non-redirected requests only",
+         "input8000_reuse025_ttft_breakdown_not_redirected.png"),
+    ]
+    arm_labels = [
+        ("PP2: 5 groups", "PP=2"),
+        ("PP1: 10 replicas", "PP=1"),
+    ]
+    workload_rows = summary[summary.workload.eq(workload)]
+    for cohort, title, filename in cohort_outputs:
+        group = workload_rows[workload_rows.cohort.eq(cohort)]
         ordered_rows = []
-        for cohort in cohorts:
-            for arm in ARMS:
-                row = group[group.cohort.eq(cohort) & group.arm.eq(arm)].iloc[0]
-                ordered_rows.append(row)
-                labels.append(f"{cohort}\n{arm}")
+        labels = []
+        for arm, label in arm_labels:
+            matches = group[group.arm.eq(arm)]
+            if matches.empty:
+                continue
+            ordered_rows.append(matches.iloc[0])
+            labels.append(label)
+        if not ordered_rows:
+            continue
+
+        fig, axis = plt.subplots(figsize=(9, 3.6))
+        positions = np.arange(len(ordered_rows))
         left = np.zeros(len(ordered_rows))
-        maximum = max(row.Total for row in ordered_rows)
+        maximum = max((row.Total for row in ordered_rows), default=0)
         for component, color in COMPONENTS:
             widths = np.array([row[component] for row in ordered_rows])
             axis.barh(positions, widths, left=left, height=0.68, color=color,
@@ -462,56 +599,80 @@ def plot_input8000_redirect_breakdown(summary):
         axis.set_yticks(positions, labels)
         axis.set_ylim(positions[-1] + 0.7, -0.7)
         axis.set_xlim(0, maximum * 1.30)
-        axis.set_title(WORKLOAD_LABELS[workload])
+        axis.set_title(f"Input 8000 / reuse 25%: {title}", fontsize=15)
         axis.set_xlabel("Mean E2E TTFT components (ms)")
         axis.grid(axis="x", color="#d9d2c8", linewidth=0.8)
         axis.set_axisbelow(True)
         axis.spines[["top", "right", "left"]].set_visible(False)
-    handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=len(COMPONENTS), frameon=False)
-    fig.suptitle("Input 8000: mean E2E TTFT breakdown by redirect outcome", fontsize=17)
-    fig.tight_layout(rect=(0, 0.07, 1, 0.95))
-    fig.savefig(FIGURES / "input8000_redirect_ttft_breakdown.png", dpi=180,
-                bbox_inches="tight", facecolor="#faf8f4")
-    plt.close(fig)
+        handles, legend_labels = axis.get_legend_handles_labels()
+        fig.legend(handles, legend_labels, loc="lower center",
+                   ncol=len(COMPONENTS), frameon=False)
+        fig.tight_layout(rect=(0, 0.16, 1, 1))
+        fig.savefig(FIGURES / filename, dpi=180, bbox_inches="tight",
+                    facecolor="#faf8f4")
+        plt.close(fig)
 
 
-def write_report(summary, paired, missing):
+def write_report(summary, paired, paired_vs_pp2, missing):
     lines = [
-        "# Interim PP1 vs PP2 analysis",
+        "# Interim PP arm comparison",
         "",
-        "This report uses only completed 300-request pairs. Positive improvement means PP2 is better.",
+        "This report uses only completed 300-request arms. Positive improvement means "
+        "the comparison arm is better than the stated baseline.",
         "",
         "## Coverage",
         "",
-        f"- Completed comparable pairs: {paired.shape[0]} / {len(WORKLOAD_ORDER)}",
+        f"- Arms defined: {', '.join(ARMS)}",
+        f"- Completed (workload, arm) cells: {len(missing)} missing entries listed below "
+        f"out of {len(WORKLOAD_ORDER) * len(ARMS)} possible.",
     ]
     for workload, arm, reason in missing:
         lines.append(f"- Missing: `{workload}` / {arm} ({reason})")
     lines.extend([
         "",
-        "## Paired result",
+        "## Paired result (baseline: PP1)",
         "",
-        "| Workload | Mean TTFT improvement | p95 improvement | p99 improvement | Scheduler queue reduction | TPOT change | Completion change | Redirects PP1→PP2 |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| Workload | Comparison arm | Mean TTFT improvement | p95 improvement | p99 improvement | Scheduler queue reduction | TPOT change | Completion change | Redirects baseline→comparison |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
     ])
     for row in paired.itertuples():
         lines.append(
-            f"| {row.workload_label} | {row.mean_ttft_improvement_pct:+.1f}% "
+            f"| {row.workload_label} | {row.comparison_arm} "
+            f"| {row.mean_ttft_improvement_pct:+.1f}% "
             f"| {row.p95_ttft_improvement_pct:+.1f}% | {row.p99_ttft_improvement_pct:+.1f}% "
             f"| {row.scheduler_queue_reduction_pct:+.1f}% | {row.tpot_change_pct:+.1f}% "
-            f"| {row.completion_change_pct:+.1f}% | {row.pp1_redirects}→{row.pp2_redirects} |"
+            f"| {row.completion_change_pct:+.1f}% | {row.baseline_redirects}→{row.comparison_redirects} |"
+        )
+    lines.extend([
+        "",
+        "## Paired result (baseline: PP2, isolates Method A/B's incremental effect)",
+        "",
+        "| Workload | Comparison arm | Mean TTFT improvement | p95 improvement | p99 improvement | Scheduler queue reduction | TPOT change | Completion change | Redirects baseline→comparison |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+    ])
+    for row in paired_vs_pp2.itertuples():
+        lines.append(
+            f"| {row.workload_label} | {row.comparison_arm} "
+            f"| {row.mean_ttft_improvement_pct:+.1f}% "
+            f"| {row.p95_ttft_improvement_pct:+.1f}% | {row.p99_ttft_improvement_pct:+.1f}% "
+            f"| {row.scheduler_queue_reduction_pct:+.1f}% | {row.tpot_change_pct:+.1f}% "
+            f"| {row.completion_change_pct:+.1f}% | {row.baseline_redirects}→{row.comparison_redirects} |"
         )
     lines.extend([
         "",
         "## Current interpretation",
         "",
-        "- PP2 reduces mean scheduler queue in every completed pair.",
+        "- PP2 reduces mean scheduler queue in every completed pair vs PP1.",
         "- PP2 removes capacity redirects in the completed 6000-token and mixed workloads.",
-        "- Mean and tail TTFT generally improve, although the 2000-token p95 regresses.",
-        "- TPOT and end-to-end completion latency regress in every completed pair; PP2 is a TTFT/tail optimization, not an overall decode-speedup in these results.",
-        "- PP2 utilization rows represent five logical instances, not ten physical pipeline stages. Stage-level balance cannot be inferred from this CSV.",
-        "- The missing PP2 10000-token result is the strongest capacity-pressure case, so the capacity-bound conclusion remains provisional.",
+        "- Mean and tail TTFT generally improve PP1->PP2, although the 2000-token p95 regresses.",
+        "- TPOT and end-to-end completion latency regress PP1->PP2 in every completed pair; "
+        "PP2 is a TTFT/tail optimization, not an overall decode-speedup in these results.",
+        "- PP2 utilization rows represent five logical instances, not ten physical pipeline "
+        "stages. Stage-level balance cannot be inferred from this CSV.",
+        "- For 'PP2 + scheduler-hide'/'PP2 + speculative' arms, the 'KV transfer' breakdown "
+        "segment shows only the portion of KV migration *not* hidden behind scheduler "
+        "queueing (usually ~0 by construction); see analysis/ttft_breakdown.csv for the raw "
+        "kv_migration_effective_latency_ns-based figures.",
         "",
         "## Figures",
         "",
@@ -533,14 +694,17 @@ def main():
     REPORTS.mkdir(parents=True, exist_ok=True)
     pairs, missing = completed_pairs()
     if not pairs:
-        raise RuntimeError("No completed PP1/PP2 pairs found")
-    summary, components, gpu_summary, paired = summarize(pairs)
+        raise RuntimeError("No completed arms found for any workload")
+    summary, components, gpu_summary = summarize(pairs)
+    paired = pairwise_vs_baseline(summary, ARMS[0])
+    paired_vs_pp2 = pairwise_vs_baseline(summary, ARMS[1])
     input8000_redirects = summarize_input8000_redirects(pairs)
     input8000_redirect_breakdown = summarize_input8000_redirect_breakdown(pairs)
     summary.to_csv(ANALYSIS / "comparison_summary.csv", index=False)
     components.to_csv(ANALYSIS / "ttft_breakdown.csv", index=False)
     gpu_summary.to_csv(ANALYSIS / "logical_instance_utilization.csv", index=False)
     paired.to_csv(ANALYSIS / "paired_improvements.csv", index=False)
+    paired_vs_pp2.to_csv(ANALYSIS / "paired_improvements_vs_pp2.csv", index=False)
     input8000_redirects.to_csv(ANALYSIS / "input8000_redirect_ttft.csv", index=False)
     input8000_redirect_breakdown.to_csv(
         ANALYSIS / "input8000_redirect_ttft_breakdown.csv", index=False
@@ -552,9 +716,11 @@ def main():
     plot_utilization(gpu_summary)
     plot_input8000_redirects(input8000_redirects)
     plot_input8000_redirect_breakdown(input8000_redirect_breakdown)
-    write_report(summary, paired, missing)
-    print(f"Analyzed {len(pairs)} completed PP1/PP2 pairs")
+    write_report(summary, paired, paired_vs_pp2, missing)
+    print(f"Analyzed {len(pairs)} workloads across up to {len(ARMS)} arms")
     print(paired.to_string(index=False))
+    print()
+    print(paired_vs_pp2.to_string(index=False))
     print(f"Figures: {FIGURES}")
     print(f"Report: {REPORTS / 'interim_pp1_vs_pp2.md'}")
 

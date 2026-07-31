@@ -177,9 +177,18 @@ def run(args: argparse.Namespace) -> int:
 
     tok = _load_tokenizer(args.model)
 
-    # 1. Build the per-request (input_ids, output_ids) stream.
+    # 1. Build the per-request (session_id, input_ids, output_ids) stream.
+    #    session_id is None for --fix-len (no multi-turn concept there);
+    #    otherwise it identifies which ShareGPT conversation a turn belongs
+    #    to, so downstream generators (regional_ratio.py) can pin every turn
+    #    of the same session to the same user_id -- without that, KV reuse
+    #    has no genuine repeated content to key off (see
+    #    2026-07-28_pp_schedule_conceal_and_speculative/reports for the
+    #    investigation that found this gap).
     if args.fix_len:
-        pairs: Iterable[tuple[list[int], list[int]]] = list(_gen_fixed_length(args, tok))
+        pairs: Iterable[tuple[int | None, list[int], list[int]]] = (
+            (None, in_ids, out_ids) for in_ids, out_ids in _gen_fixed_length(args, tok)
+        )
     else:
         sessions = _parse_sessions(args)
         pairs = _stream_turns(sessions, args, tok)
@@ -193,7 +202,7 @@ def run(args: argparse.Namespace) -> int:
     written = 0
     with out_path.open("w", encoding="utf-8") as fout:
         time_ns = int(args.first_arrival_sec) * 1_000_000_000
-        for in_ids, out_ids in pairs:
+        for session_id, in_ids, out_ids in pairs:
             if written >= args.num_reqs:
                 break
             time_ns = _advance_arrival(time_ns, written, args)
@@ -204,6 +213,8 @@ def run(args: argparse.Namespace) -> int:
                 "input_tok_ids": list(in_ids),
                 "output_tok_ids": list(out_ids),
             }
+            if session_id is not None:
+                row["session_id"] = session_id
             fout.write(json.dumps(row, ensure_ascii=False) + "\n")
             written += 1
 
@@ -262,10 +273,15 @@ def _stream_turns(
     sessions: list[list[tuple[str, str]]],
     args: argparse.Namespace,
     tok,
-) -> Iterator[tuple[list[int], list[int]]]:
+) -> Iterator[tuple[int, list[int], list[int]]]:
     """Pick an available session at random, emit its next turn's tokenized
     pair, advance that session's index. Drop turns that violate length
     constraints. Stop when no session has unconsumed turns.
+
+    Yields ``(session_id, in_ids, out_ids)`` -- session_id is this
+    session's index into ``sessions``, stable across all of its turns, so
+    downstream generators can key user_id off it for genuine per-user KV
+    reuse (same session -> same user -> same repeated prefix).
     """
     indices = [0] * len(sessions)
     while True:
@@ -288,7 +304,7 @@ def _stream_turns(
             continue
         if len(in_ids) + len(out_ids) > args.max_kv_toks:
             continue
-        yield in_ids, out_ids
+        yield sid, in_ids, out_ids
 
 
 # ---------------------------------------------------------------------------
@@ -354,8 +370,8 @@ def _gen_fixed_length(
 
 def _override_outputs_with_vllm(
     args: argparse.Namespace,
-    pairs: list[tuple[list[int], list[int]]],
-) -> list[tuple[list[int], list[int]]]:
+    pairs: list[tuple[int | None, list[int], list[int]]],
+) -> list[tuple[int | None, list[int], list[int]]]:
     """Drop the assistant outputs and replace them with what vLLM generates.
 
     Uses the synchronous ``LLM`` interface (offline batched) over all
@@ -382,12 +398,12 @@ def _override_outputs_with_vllm(
         temperature=float(args.vllm_temperature),
         seed=args.seed,
     )
-    prompts = [TokensPrompt(prompt_token_ids=in_ids) for in_ids, _ in pairs]
+    prompts = [TokensPrompt(prompt_token_ids=in_ids) for _, in_ids, _ in pairs]
     print(f"Generating {len(prompts)} responses (max_tokens={args.max_output_toks})…")
     outs = llm.generate(prompts, sp, use_tqdm=True)
     return [
-        (in_ids, list(out.outputs[0].token_ids))
-        for (in_ids, _), out in zip(pairs, outs)
+        (session_id, in_ids, list(out.outputs[0].token_ids))
+        for (session_id, in_ids, _), out in zip(pairs, outs)
     ]
 
 

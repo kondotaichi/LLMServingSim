@@ -39,6 +39,16 @@ OUTPUT_DIR = DEFAULT_OUTPUT_DIR
 FIGURE_DIR = DEFAULT_FIGURE_DIR
 MODEL_DIR = DEFAULT_MODEL_DIR
 
+# route_tail GradientBoostingRegressor hyperparameters, overridable via CLI
+# for trial runs (see scripts/tune_route_tail_model.py for the sweep that
+# picked learning_rate=0.15/n_estimators=70 over the defaults below --
+# MODEL_ITERATION_HISTORY.md item 16). Defaults reproduce the production
+# artifact unchanged.
+DEFAULT_ROUTE_TAIL_N_ESTIMATORS = 100
+DEFAULT_ROUTE_TAIL_LEARNING_RATE = 0.05
+ROUTE_TAIL_N_ESTIMATORS = DEFAULT_ROUTE_TAIL_N_ESTIMATORS
+ROUTE_TAIL_LEARNING_RATE = DEFAULT_ROUTE_TAIL_LEARNING_RATE
+
 NUMERIC_FEATURES = [
     "input_tokens",
     "output_tokens",
@@ -107,8 +117,8 @@ def fit_components(train):
     positive_log_route = np.log1p(train.loc[positive, "router_queue_ms"])
     tail_model = GradientBoostingRegressor(
         loss="absolute_error",
-        n_estimators=100,
-        learning_rate=0.05,
+        n_estimators=ROUTE_TAIL_N_ESTIMATORS,
+        learning_rate=ROUTE_TAIL_LEARNING_RATE,
         max_depth=2,
         min_samples_leaf=20,
         random_state=RANDOM_STATE,
@@ -369,15 +379,28 @@ def parse_args():
         help="Where to write diagnostic figures (default: production "
              "figures/ttft_formula).",
     )
+    parser.add_argument(
+        "--route-tail-n-estimators", type=int, default=DEFAULT_ROUTE_TAIL_N_ESTIMATORS,
+        help="route_tail GradientBoostingRegressor n_estimators "
+             f"(default: {DEFAULT_ROUTE_TAIL_N_ESTIMATORS}, the production value).",
+    )
+    parser.add_argument(
+        "--route-tail-learning-rate", type=float, default=DEFAULT_ROUTE_TAIL_LEARNING_RATE,
+        help="route_tail GradientBoostingRegressor learning_rate "
+             f"(default: {DEFAULT_ROUTE_TAIL_LEARNING_RATE}, the production value).",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     global OUTPUT_DIR, FIGURE_DIR, MODEL_DIR
+    global ROUTE_TAIL_N_ESTIMATORS, ROUTE_TAIL_LEARNING_RATE
     OUTPUT_DIR = args.output_dir or DEFAULT_OUTPUT_DIR
     FIGURE_DIR = args.figure_dir or DEFAULT_FIGURE_DIR
     MODEL_DIR = args.model_dir or DEFAULT_MODEL_DIR
+    ROUTE_TAIL_N_ESTIMATORS = args.route_tail_n_estimators
+    ROUTE_TAIL_LEARNING_RATE = args.route_tail_learning_rate
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)

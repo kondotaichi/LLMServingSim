@@ -191,6 +191,44 @@ class Request:
         self.kv_migration_bandwidth_gbps = failover.get('kv_migration_bandwidth_gbps', 0)
         self.kv_migration_distance_m = failover.get('kv_migration_distance_m', 0)
 
+        # --- Scheduler-hide KV migration overlap (opt-in via
+        # --enable-scheduler-hide-kv-migration; defaults below preserve the
+        # pre-existing serial KV-transfer-then-queue behavior exactly) ---
+        self.kv_ready_time_ns = geo.get('kv_ready_time_ns', arrival)
+        self.kv_migration_effective_latency_ns = failover.get(
+            'kv_migration_effective_latency_ns', self.kv_migration_latency_ns
+        )
+        self.kv_migration_speculative_hidden_ns = failover.get(
+            'kv_migration_speculative_hidden_ns', 0
+        )
+
+        # --- Speculative KV pre-transfer (opt-in via
+        # --enable-speculative-kv-migration) ---
+        self.speculative_kv_target_instance_id = geo.get(
+            'speculative_kv_target_instance_id', ''
+        )
+        self.speculative_kv_pin_time_ns = geo.get(
+            'speculative_kv_pinned_at_ns', -1
+        )
+        self.speculative_kv_elapsed_ns = geo.get('speculative_kv_elapsed_ns', 0)
+        self.speculative_kv_wasted = geo.get('speculative_kv_wasted', '')
+        self.speculative_kv_wasted_ns = geo.get('speculative_kv_wasted_ns', 0)
+
+        # --- Proactive KV pre-warm (opt-in via
+        # --enable-proactive-kv-prewarm; a request-independent background
+        # process, separate from the speculative pre-transfer above) ---
+        self.proactive_kv_prewarm_hit = geo.get('proactive_kv_prewarm_hit', '')
+        self.proactive_kv_prewarm_hit_tokens = geo.get(
+            'proactive_kv_prewarm_hit_tokens', 0
+        )
+        self.proactive_kv_prewarm_seeded_tokens = geo.get(
+            'proactive_kv_prewarm_seeded_tokens', 0
+        )
+        self.proactive_kv_prewarm_wasted = geo.get('proactive_kv_prewarm_wasted', '')
+        self.proactive_kv_prewarm_pin_applied = geo.get(
+            'proactive_kv_prewarm_pin_applied', ''
+        )
+
         # --- Queueing / prefill / decode timing instrumentation ---
         self.first_schedule_time_ns = -1
         self.scheduler_waiting_reqs_at_first_schedule = -1

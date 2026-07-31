@@ -319,6 +319,58 @@ def main():
     parser.add_argument('--ttft-formula-artifact-dir', type=str, default=None,
                         help='directory containing exported TTFT formula CSV/JSON artifacts; defaults to '
                         'the 2026-07-16 component-regression artifacts in this repository')
+    parser.add_argument('--enable-scheduler-hide-kv-migration',
+                        action=argparse.BooleanOptionalAction, default=False,
+                        help='Overlap KV migration transfer with the target scheduler queue wait instead '
+                        'of serializing them: the request becomes visible to the target scheduler '
+                        'immediately at redirect-decision time, and only prefill compute (not queue '
+                        'admission) waits on KV physically arriving (default: disabled, preserves the '
+                        'pre-existing serial behavior)')
+    parser.add_argument('--enable-formula-local-wait-point-estimate',
+                        action=argparse.BooleanOptionalAction, default=False,
+                        help='Use the plain TTFT point estimate (not the inflated route_upper_ms safety '
+                        'margin) for the local-wait/local-vs-redirect comparison in dynamic-formula '
+                        'multi-candidate routing, symmetric with how redirect candidates are already '
+                        'scored. Without this flag the margin structurally always exceeds '
+                        '--oneshot-max-local-wait-ns, so redirect decisions are always instantaneous '
+                        '(default: disabled, preserves the pre-existing always-instant behavior)')
+    parser.add_argument('--enable-speculative-kv-migration',
+                        action=argparse.BooleanOptionalAction, default=False,
+                        help='Pin the current best-scored candidate and speculatively start its KV '
+                        'transfer while a dynamic-formula redirect decision is still pending (not yet '
+                        'certain), crediting elapsed pinned time against the real migration if the '
+                        'decision later commits to the same target. Requires '
+                        '--enable-scheduler-hide-kv-migration (default: disabled)')
+    # SPEC: 2026-07-28_proactive_kv_prewarm -- Method C. Independent of the
+    # two flags above: a request-agnostic background process (capacity-
+    # pressure-triggered), not a per-request routing decision, so it does
+    # not require --enable-scheduler-hide-kv-migration. See
+    # experiments/2026-07-28_pp_schedule_conceal_and_speculative/reports/
+    # proactive_kv_prewarm_design.md.
+    parser.add_argument('--enable-proactive-kv-prewarm',
+                        action=argparse.BooleanOptionalAction, default=False,
+                        help='Periodically scan each prefill instance\'s capacity pressure; when it '
+                        'crosses a threshold, speculatively pre-migrate the KV cache of that instance\'s '
+                        'most frequent recent users to a less-loaded candidate, ahead of those users\' '
+                        'next request arriving (default: disabled, no-op)')
+    parser.add_argument('--proactive-kv-prewarm-pressure-threshold', type=float, default=0.8,
+                        help='capacity_pressure fraction that triggers a proactive pre-warm scan for an '
+                        'instance (default: 0.8)')
+    parser.add_argument('--proactive-kv-prewarm-top-k', type=int, default=3,
+                        help='Number of most-frequent recent users to pre-warm per triggered instance '
+                        '(default: 3)')
+    parser.add_argument('--proactive-kv-prewarm-lookback-ns', type=float, default=30_000_000_000.0,
+                        help='Recency window (ns) for the per-user frequency ranking and for how stale '
+                        'a remembered prompt can be before it is skipped (default: 30s)')
+    parser.add_argument('--proactive-kv-prewarm-cooldown-ns', type=float, default=2_000_000_000.0,
+                        help='Minimum time (ns) between two proactive-prewarm triggers on the same '
+                        'instance (default: 2s)')
+    parser.add_argument('--proactive-kv-prewarm-eval-interval-ns', type=float, default=200_000_000.0,
+                        help='Minimum time (ns) between two global proactive-prewarm scans, since the '
+                        'main loop fires far more often than this needs to re-evaluate (default: 200ms)')
+    parser.add_argument('--proactive-kv-prewarm-output', type=str, default=None,
+                        help='Optional CSV path to dump one row per proactive-prewarm trigger event '
+                        '(diagnostics; default: not written)')
     # <<< SPEC: redirect-on-capacity routing (CLI flags) -----------------------
     parser.add_argument('--expert-routing-policy', type=str,
                         choices=['BALANCED', 'RR', 'RAND', 'CUSTOM'],
@@ -413,6 +465,10 @@ def main():
                         help='diagnostic intervention: force this request to --counterfactual-target-instance-id')
     parser.add_argument('--counterfactual-target-instance-id', type=int, default=None,
                         help='diagnostic intervention target; must be admissible for the selected request')
+    parser.add_argument('--counterfactual-force-local-request-id', type=int, default=None,
+                        help='diagnostic intervention: force this request to wait at its home GPU instead of '
+                        'ever being redirected, regardless of predicted local wait or admissibility. Cannot be '
+                        'combined with --counterfactual-request-id')
     parser.add_argument('--geographic-metadata-output', type=str, default=None,
                         help='path for the geographic run metadata JSON (area/GPU/user config, definitions, git '
                         'commit hash). Omit to skip')
@@ -620,7 +676,17 @@ def main():
                     enable_oneshot_target_reservation=args.enable_oneshot_target_reservation,
                     ttft_formula_artifact_dir=args.ttft_formula_artifact_dir,
                     counterfactual_request_id=args.counterfactual_request_id,
-                    counterfactual_target_instance_id=args.counterfactual_target_instance_id)
+                    counterfactual_target_instance_id=args.counterfactual_target_instance_id,
+                    counterfactual_force_local_request_id=args.counterfactual_force_local_request_id,
+                    enable_scheduler_hide_kv_migration=args.enable_scheduler_hide_kv_migration,
+                    enable_formula_local_wait_point_estimate=args.enable_formula_local_wait_point_estimate,
+                    enable_speculative_kv_migration=args.enable_speculative_kv_migration,
+                    enable_proactive_kv_prewarm=args.enable_proactive_kv_prewarm,
+                    proactive_kv_prewarm_pressure_threshold=args.proactive_kv_prewarm_pressure_threshold,
+                    proactive_kv_prewarm_top_k=args.proactive_kv_prewarm_top_k,
+                    proactive_kv_prewarm_lookback_ns=args.proactive_kv_prewarm_lookback_ns,
+                    proactive_kv_prewarm_cooldown_ns=args.proactive_kv_prewarm_cooldown_ns,
+                    proactive_kv_prewarm_eval_interval_ns=args.proactive_kv_prewarm_eval_interval_ns)
     # Power Modeling if enabled
     if power_modeling:
         power_model = PowerModel(power_configs)
@@ -723,6 +789,7 @@ def main():
         # Route newly arrived requests to instances based on current load
         if dataset is not None:
             router.route_arrived_requests(current)
+            router.maybe_proactive_kv_prewarm(current)
 
         instance_id = npu2inst_mapping[sys]  # get instance id from NPU id
         node_id = inst2node_mapping[instance_id] # get node id from instance id
@@ -1198,6 +1265,11 @@ def main():
         candidate_output = _cluster_config_path(args.routing_candidate_output)
         router.save_candidate_diagnostics(candidate_output)
         print(f"Saving routing candidate diagnostics to: {args.routing_candidate_output}")
+
+    if args.proactive_kv_prewarm_output:
+        prewarm_output = _cluster_config_path(args.proactive_kv_prewarm_output)
+        router.save_proactive_migration_log(prewarm_output)
+        print(f"Saving proactive KV pre-warm trigger log to: {args.proactive_kv_prewarm_output}")
 
     # --- Geographic Phase 1: per-user / per-GPU aggregation + metadata ---
     if (args.geographic_user_output or args.geographic_gpu_output
