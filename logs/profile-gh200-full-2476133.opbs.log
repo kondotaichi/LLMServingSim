@@ -1,0 +1,38 @@
+[13:51:52] INFO     Model config:                                               
+                    /workspace/configs/model/meta-llama/Llama-3.1-8B.json       
+                    (model_type=llama → architecture=llama)                     
+────────────── Profiling meta-llama/Llama-3.1-8B on GH200 (llama) ──────────────
+           INFO     Variant: bf16                                               
+           INFO     TP degrees: [1]                                             
+           INFO     Output root:                                                
+                    /workspace/profiler/perf/GH200/meta-llama/Llama-3.1-8B/bf16 
+           INFO     → TP=1  booting vLLM engine                                 
+[13:52:01] INFO     ✓ TP=1  booting vLLM engine (8.8s)                          
+           INFO     TP=1 limits: num_cache_tokens=21584064 max_model_len=131072 
+                    max_num_batched_tokens=2048 max_num_seqs=256                
+TP=1  dense ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 152/152 0:00:21 • 0:00:00
+[13:52:22] INFO     ✓ dense →                                                   
+                    /workspace/profiler/perf/GH200/meta-llama/Llama-3.1-8B/bf16/
+                    tp1/dense.csv                                               
+TP=1  per_sequence ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 40/40 0:00:15 • 0:00:00
+[13:52:38] INFO     ✓ per_sequence →                                            
+                    /workspace/profiler/perf/GH200/meta-llama/Llama-3.1-8B/bf16/
+                    tp1/per_sequence.csv                                        
+TP=1  attention ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 8643/8643 0:38:35 • 0:00:00
+[14:31:13] INFO     ✓ attention →                                               
+                    /workspace/profiler/perf/GH200/meta-llama/Llama-3.1-8B/bf16/
+                    tp1/attention.csv                                           
+           INFO     skew grid: n=2-256 x2 ratio=[0.0625, 0.125, 0.25, 0.5, 0.75,
+                    0.9] pc=0, 16-2048 x2 kp=0, 512-8192 x2 kvs=128-16384 x2    
+                    skew=(T1=4.0, T2 swept)                                     
+TP=1  skew ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 13009/13009 3:58:30 • 0:00:00
+[18:29:44] INFO     mixed: n=12682 alpha mean=0.075 min=-240.484 max=146.100    
+           INFO     pure: n=327 alpha mean=0.192 min=-0.158 max=2.619           
+           INFO     ✓ skew →                                                    
+                    /workspace/profiler/perf/GH200/meta-llama/Llama-3.1-8B/bf16/
+                    tp1/skew.csv                                                
+           INFO     → replicating tp_stable layers across TP folders            
+           INFO     ✓ replicating tp_stable layers across TP folders (0.0s)     
+───────────────────────────────────── Done ─────────────────────────────────────
+[18:29:45] INFO     Results written to:                                         
+                    /workspace/profiler/perf/GH200/meta-llama/Llama-3.1-8B/bf16 

@@ -1,0 +1,44 @@
+[19:01:50] INFO     Model config:                                               
+                    /workspace/configs/model/meta-llama/Llama-3.1-8B.json       
+                    (model_type=llama → architecture=llama)                     
+────────────── Profiling meta-llama/Llama-3.1-8B on GH200 (llama) ──────────────
+           INFO     Variant: bf16                                               
+           INFO     TP degrees: [1]                                             
+           INFO     Output root:                                                
+                    /workspace/profiler/perf/GH200/meta-llama/Llama-3.1-8B/bf16 
+           INFO     → TP=1  booting vLLM engine                                 
+[19:02:13] INFO     ✓ TP=1  booting vLLM engine (23.0s)                         
+           INFO     TP=1 limits: num_cache_tokens=21584224 max_model_len=131072 
+                    max_num_batched_tokens=2048 max_num_seqs=256                
+TP=1  dense ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 152/152 0:00:08 • 0:00:00
+[19:02:22] INFO     ✓ dense →                                                   
+                    /workspace/profiler/perf/GH200/meta-llama/Llama-3.1-8B/bf16/
+                    tp1/dense.csv                                               
+TP=1  per_sequence ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 40/40 0:00:04 • 0:00:00
+[19:02:27] INFO     ✓ per_sequence →                                            
+                    /workspace/profiler/perf/GH200/meta-llama/Llama-3.1-8B/bf16/
+                    tp1/per_sequence.csv                                        
+TP=1  attention ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 8643/8643 0:13:26 • 0:00:00
+[19:15:53] INFO     ✓ attention →                                               
+                    /workspace/profiler/perf/GH200/meta-llama/Llama-3.1-8B/bf16/
+                    tp1/attention.csv                                           
+           INFO     → replicating tp_stable layers across TP folders            
+           INFO     ✓ replicating tp_stable layers across TP folders (0.0s)     
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/workspace/profiler/__main__.py", line 435, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/workspace/profiler/__main__.py", line 419, in main
+    run_full(arch_path, profile_args, ns.out_root)
+  File "/workspace/profiler/core/runner.py", line 220, in run_full
+    persist_meta(args, arch_path, last_engine_kwargs, variant_root)
+  File "/workspace/profiler/core/writer.py", line 549, in persist_meta
+    "skew_fit": _skew_fit_block(variant_root, args.tp_degrees),
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/profiler/core/writer.py", line 321, in _skew_fit_block
+    from profiler.core.fit_alpha import fit_alpha_per_tp
+  File "/workspace/profiler/core/fit_alpha.py", line 76, in <module>
+    import pandas as pd
+ModuleNotFoundError: No module named 'pandas'

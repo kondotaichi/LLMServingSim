@@ -1,0 +1,246 @@
+[18:48:29] INFO     Model config:                                               
+                    /workspace/configs/model/meta-llama/Llama-3.1-8B.json       
+                    (model_type=llama → architecture=llama)                     
+────────────── Profiling meta-llama/Llama-3.1-8B on GH200 (llama) ──────────────
+           INFO     Variant: bf16                                               
+           INFO     TP degrees: [1]                                             
+           INFO     Output root:                                                
+                    /workspace/profiler/perf/GH200/meta-llama/Llama-3.1-8B/bf16 
+           INFO     → TP=1  booting vLLM engine                                 
+[18:48:39] ERROR    Captured vLLM stdio before failure:                         
+                    ERROR 07-31 18:48:39  Error in inspecting model architecture
+                    'LlamaForCausalLM'                                          
+                    ERROR 07-31 18:48:39  Traceback (most recent call last):    
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /models/registry.py", line 1306, in _run_in_subprocess      
+                    ERROR 07-31 18:48:39      returned.check_returncode()       
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/lib/python3.12/subprocess.py", line 502, in           
+                    check_returncode                                            
+                    ERROR 07-31 18:48:39      raise                             
+                    CalledProcessError(self.returncode, self.args, self.stdout, 
+                    ERROR 07-31 18:48:39  subprocess.CalledProcessError: Command
+                    '['/usr/bin/python3', '-m',                                 
+                    'vllm.model_executor.models.registry']' returned non-zero   
+                    exit status 1.                                              
+                    ERROR 07-31 18:48:39                                        
+                    ERROR 07-31 18:48:39  The above exception was the direct    
+                    cause of the following exception:                           
+                    ERROR 07-31 18:48:39                                        
+                    ERROR 07-31 18:48:39  Traceback (most recent call last):    
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /models/registry.py", line 880, in _try_inspect_model_cls   
+                    ERROR 07-31 18:48:39      return model.inspect_model_cls()  
+                    ERROR 07-31 18:48:39             ^^^^^^^^^^^^^^^^^^^^^^^^^  
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/logging_utils/
+                    log_time.py", line 21, in _wrapper                          
+                    ERROR 07-31 18:48:39      result = func(*args, **kwargs)    
+                    ERROR 07-31 18:48:39               ^^^^^^^^^^^^^^^^^^^^^    
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /models/registry.py", line 841, in inspect_model_cls        
+                    ERROR 07-31 18:48:39      mi = _run_in_subprocess(          
+                    ERROR 07-31 18:48:39           ^^^^^^^^^^^^^^^^^^^          
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /models/registry.py", line 1309, in _run_in_subprocess      
+                    ERROR 07-31 18:48:39      raise RuntimeError(               
+                    ERROR 07-31 18:48:39  RuntimeError: Error raised in         
+                    subprocess:                                                 
+                    ERROR 07-31 18:48:39  <frozen runpy>:128: RuntimeWarning:   
+                    'vllm.model_executor.models.registry' found in sys.modules  
+                    after import of package 'vllm.model_executor.models', but   
+                    prior to execution of 'vllm.model_executor.models.registry';
+                    this may result in unpredictable behaviour                  
+                    ERROR 07-31 18:48:39  Traceback (most recent call last):    
+                    ERROR 07-31 18:48:39    File "<frozen runpy>", line 198, in 
+                    _run_module_as_main                                         
+                    ERROR 07-31 18:48:39    File "<frozen runpy>", line 88, in  
+                    _run_code                                                   
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /models/registry.py", line 1332, in <module>                
+                    ERROR 07-31 18:48:39      _run()                            
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /models/registry.py", line 1325, in _run                    
+                    ERROR 07-31 18:48:39      result = fn()                     
+                    ERROR 07-31 18:48:39               ^^^^                     
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /models/registry.py", line 842, in <lambda>                 
+                    ERROR 07-31 18:48:39      lambda:                           
+                    _ModelInfo.from_model_cls(self.load_model_cls())            
+                    ERROR 07-31 18:48:39                                        
+                    ^^^^^^^^^^^^^^^^^^^^^                                       
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /models/registry.py", line 855, in load_model_cls           
+                    ERROR 07-31 18:48:39      mod =                             
+                    importlib.import_module(self.module_name)                   
+                    ERROR 07-31 18:48:39                                        
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                   
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/lib/python3.12/importlib/__init__.py", line 90, in    
+                    import_module                                               
+                    ERROR 07-31 18:48:39      return                            
+                    _bootstrap._gcd_import(name, package, level)                
+                    ERROR 07-31 18:48:39                                        
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^        
+                    ERROR 07-31 18:48:39    File "<frozen                       
+                    importlib._bootstrap>", line 1387, in _gcd_import           
+                    ERROR 07-31 18:48:39    File "<frozen                       
+                    importlib._bootstrap>", line 1360, in _find_and_load        
+                    ERROR 07-31 18:48:39    File "<frozen                       
+                    importlib._bootstrap>", line 1331, in                       
+                    _find_and_load_unlocked                                     
+                    ERROR 07-31 18:48:39    File "<frozen                       
+                    importlib._bootstrap>", line 935, in _load_unlocked         
+                    ERROR 07-31 18:48:39    File "<frozen                       
+                    importlib._bootstrap_external>", line 995, in exec_module   
+                    ERROR 07-31 18:48:39    File "<frozen                       
+                    importlib._bootstrap>", line 488, in                        
+                    _call_with_frames_removed                                   
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /models/llama.py", line 55, in <module>                     
+                    ERROR 07-31 18:48:39      from                              
+                    vllm.model_executor.model_loader.weight_utils import (      
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /model_loader/__init__.py", line 12, in <module>            
+                    ERROR 07-31 18:48:39      from                              
+                    vllm.model_executor.model_loader.bitsandbytes_loader import 
+                    BitsAndBytesModelLoader                                     
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /model_loader/bitsandbytes_loader.py", line 25, in <module> 
+                    ERROR 07-31 18:48:39      from vllm.lora.utils import       
+                    is_moe_model                                                
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/lora/utils.py"
+                    , line 18, in <module>                                      
+                    ERROR 07-31 18:48:39      from vllm.lora.layers import (    
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/lora/layers/__
+                    init__.py", line 4, in <module>                             
+                    ERROR 07-31 18:48:39      from                              
+                    vllm.lora.layers.column_parallel_linear import (            
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/lora/layers/co
+                    lumn_parallel_linear.py", line 20, in <module>              
+                    ERROR 07-31 18:48:39      from .base_linear import          
+                    BaseLinearLayerWithLoRA                                     
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/lora/layers/ba
+                    se_linear.py", line 19, in <module>                         
+                    ERROR 07-31 18:48:39      from .utils import                
+                    _get_lora_device                                            
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/lora/layers/ut
+                    ils.py", line 10, in <module>                               
+                    ERROR 07-31 18:48:39      from                              
+                    vllm.model_executor.layers.fused_moe.fused_moe import       
+                    try_get_optimal_moe_config                                  
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /layers/fused_moe/__init__.py", line 16, in <module>        
+                    ERROR 07-31 18:48:39      from                              
+                    vllm.model_executor.layers.fused_moe.fused_moe_method_base  
+                    import (                                                    
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /layers/fused_moe/fused_moe_method_base.py", line 8, in     
+                    <module>                                                    
+                    ERROR 07-31 18:48:39      import                            
+                    vllm.model_executor.layers.fused_moe.modular_kernel as mk   
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /layers/fused_moe/modular_kernel.py", line 23, in <module>  
+                    ERROR 07-31 18:48:39      from                              
+                    vllm.model_executor.layers.fused_moe.utils import (         
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /layers/fused_moe/utils.py", line 9, in <module>            
+                    ERROR 07-31 18:48:39      from                              
+                    vllm.model_executor.layers.quantization.utils.fp8_utils     
+                    import (                                                    
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /layers/quantization/utils/fp8_utils.py", line 22, in       
+                    <module>                                                    
+                    ERROR 07-31 18:48:39      from                              
+                    vllm.model_executor.layers.quantization.utils.w8a8_utils    
+                    import (                                                    
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /layers/quantization/utils/w8a8_utils.py", line 41, in      
+                    <module>                                                    
+                    ERROR 07-31 18:48:39      CUTLASS_FP8_SUPPORTED =           
+                    cutlass_fp8_supported()                                     
+                    ERROR 07-31 18:48:39                                        
+                    ^^^^^^^^^^^^^^^^^^^^^^^                                     
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor
+                    /layers/quantization/utils/w8a8_utils.py", line 15, in      
+                    cutlass_fp8_supported                                       
+                    ERROR 07-31 18:48:39      capability_tuple =                
+                    current_platform.get_device_capability()                    
+                    ERROR 07-31 18:48:39                                        
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                    
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/platforms/cuda
+                    .py", line 121, in wrapper                                  
+                    ERROR 07-31 18:48:39      return fn(*args, **kwargs)        
+                    ERROR 07-31 18:48:39             ^^^^^^^^^^^^^^^^^^^        
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/platforms/cuda
+                    .py", line 538, in get_device_capability                    
+                    ERROR 07-31 18:48:39      physical_device_id =              
+                    cls.device_id_to_physical_device_id(device_id)              
+                    ERROR 07-31 18:48:39                                        
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^              
+                    ERROR 07-31 18:48:39    File                                
+                    "/usr/local/lib/python3.12/dist-packages/vllm/platforms/inte
+                    rface.py", line 219, in device_id_to_physical_device_id     
+                    ERROR 07-31 18:48:39      return int(physical_device_id)    
+                    ERROR 07-31 18:48:39             ^^^^^^^^^^^^^^^^^^^^^^^    
+                    ERROR 07-31 18:48:39  ValueError: invalid literal for int() 
+                    with base 10: 'GPU-0caddcf2-18c0-c52e-24be-e230999430a9'    
+                    ERROR 07-31 18:48:39                                        
+                                                                                
+           ERROR    ✗ TP=1  booting vLLM engine (failed after 9.5s)             
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/workspace/profiler/__main__.py", line 435, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/workspace/profiler/__main__.py", line 419, in main
+    run_full(arch_path, profile_args, ns.out_root)
+  File "/workspace/profiler/core/runner.py", line 172, in run_full
+    llm, engine_kwargs, tmpdir = spin_up(args, tp)
+                                 ^^^^^^^^^^^^^^^^^
+  File "/workspace/profiler/core/engine.py", line 242, in spin_up
+    llm = LLM(**kwargs)
+          ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/llm.py", line 382, in __init__
+    self.llm_engine = LLMEngine.from_engine_args(
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/llm_engine.py", line 169, in from_engine_args
+    vllm_config = engine_args.create_engine_config(usage_context)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/vllm/engine/arg_utils.py", line 1549, in create_engine_config
+    model_config = self.create_model_config()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/vllm/engine/arg_utils.py", line 1398, in create_model_config
+    return ModelConfig(
+           ^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/pydantic/_internal/_dataclasses.py", line 121, in __init__
+    s.__pydantic_validator__.validate_python(ArgsKwargs(args, kwargs), self_instance=s)
+pydantic_core._pydantic_core.ValidationError: 1 validation error for ModelConfig
+  Value error, Model architectures ['LlamaForCausalLM'] failed to be inspected. Please check the logs for more details. [type=value_error, input_value=ArgsKwargs((), {'model': ...nderer_num_workers': 1}), input_type=ArgsKwargs]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error
