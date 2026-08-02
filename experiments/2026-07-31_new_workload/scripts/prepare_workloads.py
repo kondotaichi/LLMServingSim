@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a reproducible urban workload for a 20-GPU deployment."""
+"""Build a reproducible urban workload for a 100-GPU deployment."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ WORKLOAD_DIR = EXPERIMENT_DIR / "workloads"
 AREA_KM2 = 11.0
 AREA_SIDE_M = math.sqrt(AREA_KM2) * 1000.0
 POPULATION = 200_000
-GPU_ROWS = 4
-GPU_COLS = 5
+GPU_ROWS = 10
+GPU_COLS = 10
 NUM_GPUS = GPU_ROWS * GPU_COLS
 
 DAU_FRACTION = 0.10
@@ -124,12 +124,14 @@ def create_placements() -> tuple[list[tuple[float, float]], list[dict]]:
 def write_placements(positions: list[tuple[float, float]], users: list[dict]) -> None:
     PLACEMENT_DIR.mkdir(parents=True, exist_ok=True)
     with (PLACEMENT_DIR / "gpus.csv").open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.writer(handle)
+        writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(["gpu_id", "instance_id", "gpu_x_m", "gpu_y_m"])
         for gpu_id, (gpu_x, gpu_y) in enumerate(positions):
             writer.writerow([gpu_id, gpu_id, gpu_x, gpu_y])
     with (PLACEMENT_DIR / "users.csv").open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(users[0]))
+        writer = csv.DictWriter(
+            handle, fieldnames=list(users[0]), lineterminator="\n"
+        )
         writer.writeheader()
         writer.writerows(users)
 
@@ -257,16 +259,16 @@ def cluster_config(hardware: str) -> dict:
         nodes.append({
             "num_instances": 1,
             "cpu_mem": {
-                "mem_size": 480,
-                "mem_bw": 500,
-                "mem_latency": 0,
+                "mem_size": 128,
+                "mem_bw": 33.8,
+                "mem_latency": 102.9,
             },
             "instances": [{
                 "model_name": "meta-llama/Llama-3.1-8B",
                 "hardware": hardware,
                 "npu_mem": {
-                    "mem_size": 96,
-                    "mem_bw": 4_000,
+                    "mem_size": 24,
+                    "mem_bw": 1_008,
                     "mem_latency": 0,
                 },
                 "pd_type": None,
@@ -277,7 +279,7 @@ def cluster_config(hardware: str) -> dict:
         })
     return {
         "num_nodes": NUM_GPUS,
-        "link_bw": 50,
+        "link_bw": 16,
         "link_latency": 20_000,
         "nodes": nodes,
     }
@@ -285,10 +287,7 @@ def cluster_config(hardware: str) -> dict:
 
 def write_cluster_configs() -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    outputs = {
-        "gh200_class_20gpu_proxy.json": "RTXPRO6000",
-        "gh200_20gpu.json": "GH200",
-    }
+    outputs = {"rtx4090_100gpu.json": "RTX4090"}
     for filename, hardware in outputs.items():
         path = CONFIG_DIR / filename
         path.write_text(
@@ -308,7 +307,7 @@ def write_metadata(manifests: list[dict], users: list[dict]) -> None:
             "side_m": AREA_SIDE_M,
             "population": POPULATION,
             "population_density_per_km2": POPULATION / AREA_KM2,
-            "placement": "uniform random users, 4x5 regular GPU grid",
+            "placement": "uniform random users, 10x10 regular GPU grid",
             "placement_seed": PLACEMENT_SEED,
         },
         "capacity": {
@@ -337,20 +336,16 @@ def write_metadata(manifests: list[dict], users: list[dict]) -> None:
             "protocol_overhead_bytes": PROTOCOL_OVERHEAD_BYTES,
             "bytes_per_input_token": BYTES_PER_INPUT_TOKEN,
             "first_token_payload_bytes": FIRST_TOKEN_PAYLOAD_BYTES,
-            "gpu_backbone_bandwidth_GBps": 50,
+            "gpu_backbone_bandwidth_GBps": 16,
             "gpu_backbone_latency_ns": 20_000,
         },
         "hardware_model": {
-            "target_class": "NVIDIA GH200 Grace Hopper, 96 GB HBM3 variant",
-            "gpu_memory_GB": 96,
-            "gpu_memory_bandwidth_GBps": 4_000,
-            "grace_cpu_memory_GB": 480,
-            "grace_cpu_memory_bandwidth_GBps": 500,
-            "compute_profile_proxy": "RTXPRO6000",
-            "warning": (
-                "The repository has no GH200 profiler/perf dataset. Memory values are "
-                "GH200-class, but compute latency uses the existing RTXPRO6000 profile."
-            ),
+            "target": "NVIDIA GeForce RTX 4090",
+            "gpu_memory_GB": 24,
+            "gpu_memory_bandwidth_GBps": 1_008,
+            "host_memory_GB": 128,
+            "host_memory_bandwidth_GBps": 33.8,
+            "compute_profile": "RTX4090",
         },
         "workloads": manifests,
     }
@@ -385,7 +380,9 @@ def main() -> None:
             {key: value for key, value in row.items() if not key.endswith("distribution")}
             for row in manifests
         ]
-        writer = csv.DictWriter(handle, fieldnames=list(flat_manifests[0]))
+        writer = csv.DictWriter(
+            handle, fieldnames=list(flat_manifests[0]), lineterminator="\n"
+        )
         writer.writeheader()
         writer.writerows(flat_manifests)
     write_metadata(manifests, users)

@@ -1,0 +1,306 @@
+{
+  "geography": {
+    "area_km2": 1.0,
+    "shape": "square",
+    "side_m": 1000.0,
+    "population": 20000,
+    "population_density_per_km2": 20000.0,
+    "placement": "uniform random users, 5x2 regular GPU grid",
+    "placement_seed": 20260731
+  },
+  "capacity": {
+    "num_gpus": 10,
+    "population_per_gpu": 2000.0,
+    "area_per_gpu_km2": 0.1,
+    "min_nearest_users_per_gpu": 1928,
+    "max_nearest_users_per_gpu": 2067
+  },
+  "traffic_model": {
+    "daily_active_user_fraction": 0.1,
+    "daily_active_users": 2000.0,
+    "requests_per_active_user_day": 20.0,
+    "total_requests_day": 40000.0,
+    "busy_hour_daily_request_share": 0.15,
+    "peak_multiplier_over_busy_hour": 2.0,
+    "rates_rps": {
+      "daily_average": 0.46296296296296297,
+      "busy_hour": 1.6666666666666667,
+      "peak_2x": 3.3333333333333335
+    },
+    "requests_per_trace": 16000,
+    "arrival_process": "Poisson, rescaled to exact target duration",
+    "request_user_sampling": "uniform over the full population (not restricted to the daily-active subset)",
+    "prefix_reuse": "disabled in this baseline workload"
+  },
+  "network_model": {
+    "access_throughput_mbps": 100.0,
+    "distance_latency_ns_per_meter": 5.0,
+    "protocol_overhead_bytes": 500,
+    "bytes_per_input_token": 4,
+    "first_token_payload_bytes": 100,
+    "gpu_backbone_bandwidth_GBps": 16,
+    "gpu_backbone_latency_ns": 20000
+  },
+  "hardware_model": {
+    "target": "NVIDIA GeForce RTX 4090",
+    "gpu_memory_GB": 24,
+    "gpu_memory_bandwidth_GBps": 1008,
+    "host_memory_GB": 128,
+    "host_memory_bandwidth_GBps": 33.8,
+    "compute_profile": "RTX4090"
+  },
+  "workloads": [
+    {
+      "condition": "daily_average_seed1",
+      "load_level": "daily_average",
+      "seed": 1,
+      "requests": 16000,
+      "target_rate_rps": 0.46296296296296297,
+      "realized_send_rate_rps": 0.46296296296296297,
+      "duration_s": 34560.0,
+      "mean_input_toks": 3824.768,
+      "mean_output_toks": 347.464,
+      "min_requests_per_gpu": 1492,
+      "max_requests_per_gpu": 1675,
+      "workload": "workloads/10gpu_daily_average_seed1.jsonl",
+      "input_distribution": {
+        "512": 3149,
+        "2000": 4057,
+        "4000": 3914,
+        "6000": 2439,
+        "8000": 1615,
+        "10000": 826
+      },
+      "output_distribution": {
+        "128": 4769,
+        "256": 6424,
+        "512": 3160,
+        "1024": 1647
+      }
+    },
+    {
+      "condition": "daily_average_seed2",
+      "load_level": "daily_average",
+      "seed": 2,
+      "requests": 16000,
+      "target_rate_rps": 0.46296296296296297,
+      "realized_send_rate_rps": 0.46296296296296297,
+      "duration_s": 34560.0,
+      "mean_input_toks": 3774.279,
+      "mean_output_toks": 348.328,
+      "min_requests_per_gpu": 1539,
+      "max_requests_per_gpu": 1675,
+      "workload": "workloads/10gpu_daily_average_seed2.jsonl",
+      "input_distribution": {
+        "512": 3247,
+        "2000": 3999,
+        "4000": 4061,
+        "6000": 2319,
+        "8000": 1585,
+        "10000": 789
+      },
+      "output_distribution": {
+        "128": 4691,
+        "256": 6431,
+        "512": 3259,
+        "1024": 1619
+      }
+    },
+    {
+      "condition": "daily_average_seed3",
+      "load_level": "daily_average",
+      "seed": 3,
+      "requests": 16000,
+      "target_rate_rps": 0.46296296296296297,
+      "realized_send_rate_rps": 0.46296296296296297,
+      "duration_s": 34560.0,
+      "mean_input_toks": 3772.125,
+      "mean_output_toks": 347.928,
+      "min_requests_per_gpu": 1545,
+      "max_requests_per_gpu": 1686,
+      "workload": "workloads/10gpu_daily_average_seed3.jsonl",
+      "input_distribution": {
+        "512": 3250,
+        "2000": 4040,
+        "4000": 3962,
+        "6000": 2408,
+        "8000": 1543,
+        "10000": 797
+      },
+      "output_distribution": {
+        "128": 4775,
+        "256": 6416,
+        "512": 3147,
+        "1024": 1662
+      }
+    },
+    {
+      "condition": "busy_hour_seed1",
+      "load_level": "busy_hour",
+      "seed": 1,
+      "requests": 16000,
+      "target_rate_rps": 1.6666666666666667,
+      "realized_send_rate_rps": 1.6666666666666667,
+      "duration_s": 9600.0,
+      "mean_input_toks": 3789.355,
+      "mean_output_toks": 342.416,
+      "min_requests_per_gpu": 1553,
+      "max_requests_per_gpu": 1686,
+      "workload": "workloads/10gpu_busy_hour_seed1.jsonl",
+      "input_distribution": {
+        "512": 3265,
+        "2000": 4000,
+        "4000": 3916,
+        "6000": 2430,
+        "8000": 1588,
+        "10000": 801
+      },
+      "output_distribution": {
+        "128": 4898,
+        "256": 6334,
+        "512": 3227,
+        "1024": 1541
+      }
+    },
+    {
+      "condition": "busy_hour_seed2",
+      "load_level": "busy_hour",
+      "seed": 2,
+      "requests": 16000,
+      "target_rate_rps": 1.6666666666666667,
+      "realized_send_rate_rps": 1.6666666666666667,
+      "duration_s": 9600.0,
+      "mean_input_toks": 3799.573,
+      "mean_output_toks": 344.432,
+      "min_requests_per_gpu": 1544,
+      "max_requests_per_gpu": 1657,
+      "workload": "workloads/10gpu_busy_hour_seed2.jsonl",
+      "input_distribution": {
+        "512": 3139,
+        "2000": 4048,
+        "4000": 4080,
+        "6000": 2319,
+        "8000": 1642,
+        "10000": 772
+      },
+      "output_distribution": {
+        "128": 4818,
+        "256": 6392,
+        "512": 3217,
+        "1024": 1573
+      }
+    },
+    {
+      "condition": "busy_hour_seed3",
+      "load_level": "busy_hour",
+      "seed": 3,
+      "requests": 16000,
+      "target_rate_rps": 1.6666666666666667,
+      "realized_send_rate_rps": 1.6666666666666667,
+      "duration_s": 9600.0,
+      "mean_input_toks": 3793.508,
+      "mean_output_toks": 346.448,
+      "min_requests_per_gpu": 1492,
+      "max_requests_per_gpu": 1686,
+      "workload": "workloads/10gpu_busy_hour_seed3.jsonl",
+      "input_distribution": {
+        "512": 3219,
+        "2000": 4068,
+        "4000": 3918,
+        "6000": 2360,
+        "8000": 1635,
+        "10000": 800
+      },
+      "output_distribution": {
+        "128": 4770,
+        "256": 6426,
+        "512": 3187,
+        "1024": 1617
+      }
+    },
+    {
+      "condition": "peak_2x_seed1",
+      "load_level": "peak_2x",
+      "seed": 1,
+      "requests": 16000,
+      "target_rate_rps": 3.3333333333333335,
+      "realized_send_rate_rps": 3.3333333333333335,
+      "duration_s": 4800.0,
+      "mean_input_toks": 3769.503,
+      "mean_output_toks": 344.544,
+      "min_requests_per_gpu": 1504,
+      "max_requests_per_gpu": 1704,
+      "workload": "workloads/10gpu_peak_2x_seed1.jsonl",
+      "input_distribution": {
+        "512": 3254,
+        "2000": 4106,
+        "4000": 3894,
+        "6000": 2380,
+        "8000": 1541,
+        "10000": 825
+      },
+      "output_distribution": {
+        "128": 4824,
+        "256": 6454,
+        "512": 3110,
+        "1024": 1612
+      }
+    },
+    {
+      "condition": "peak_2x_seed2",
+      "load_level": "peak_2x",
+      "seed": 2,
+      "requests": 16000,
+      "target_rate_rps": 3.3333333333333335,
+      "realized_send_rate_rps": 3.3333333333333335,
+      "duration_s": 4800.0,
+      "mean_input_toks": 3802.48,
+      "mean_output_toks": 349.496,
+      "min_requests_per_gpu": 1478,
+      "max_requests_per_gpu": 1676,
+      "workload": "workloads/10gpu_peak_2x_seed2.jsonl",
+      "input_distribution": {
+        "512": 3140,
+        "2000": 4038,
+        "4000": 4049,
+        "6000": 2423,
+        "8000": 1539,
+        "10000": 811
+      },
+      "output_distribution": {
+        "128": 4813,
+        "256": 6239,
+        "512": 3297,
+        "1024": 1651
+      }
+    },
+    {
+      "condition": "peak_2x_seed3",
+      "load_level": "peak_2x",
+      "seed": 3,
+      "requests": 16000,
+      "target_rate_rps": 3.3333333333333335,
+      "realized_send_rate_rps": 3.3333333333333335,
+      "duration_s": 4800.0,
+      "mean_input_toks": 3807.061,
+      "mean_output_toks": 346.136,
+      "min_requests_per_gpu": 1511,
+      "max_requests_per_gpu": 1646,
+      "workload": "workloads/10gpu_peak_2x_seed3.jsonl",
+      "input_distribution": {
+        "512": 3123,
+        "2000": 4025,
+        "4000": 4063,
+        "6000": 2444,
+        "8000": 1551,
+        "10000": 794
+      },
+      "output_distribution": {
+        "128": 4715,
+        "256": 6444,
+        "512": 3266,
+        "1024": 1575
+      }
+    }
+  ]
+}

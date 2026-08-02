@@ -1,8 +1,8 @@
-# 20-GPU都市ワークロード
+# 100-GPU都市ワークロード
 
 ## 1. 目的
 
-11 km²、人口20万人の高密度都市領域に20台のGH200級GPUを配置し、地理routingとTTFTを評価するための再現可能なワークロードである。
+11 km²、人口20万人の高密度都市領域に100台のRTX 4090を配置し、地理routingとTTFTを評価するための再現可能なワークロードである。
 
 ## 2. 地理・GPU構成
 
@@ -12,10 +12,10 @@
 | 領域形状 | 正方形、1辺約3,316.6 m |
 | 人口 | 200,000 users |
 | 人口密度 | 約18,181.8 users/km² |
-| GPU数 | 20 |
-| GPU配置 | 4行×5列の等間隔grid |
-| 平均担当人口 | 10,000 users/GPU |
-| 平均担当面積 | 0.55 km²/GPU |
+| GPU数 | 100 |
+| GPU配置 | 10行×10列の等間隔grid |
+| 平均担当人口 | 2,000 users/GPU |
+| 平均担当面積 | 0.11 km²/GPU |
 
 Userは領域内へ一様ランダムに配置し、最寄りと第2近傍のGPUを事前計算している。静的配置と20,000人のdaily-active user集合は、全workloadとseedで共通である。各requestの送信者はこのdaily-active集合から一様にsamplingする。
 
@@ -73,35 +73,30 @@ Userから最寄りGPUまでのaccess networkは、次の簡易モデルで表�
 
 `arrival_time_ns`はuplink完了後のGPU到着時刻であり、元の送信時刻は`request_send_time_ns`へ保存する。無線contention、jitter、packet lossは扱わない。
 
-## 6. GH200級cluster
+## 6. RTX 4090 cluster
 
-GH200実機用のcluster設定は[`configs/gh200_20gpu.json`](configs/gh200_20gpu.json)である。20 nodeに1 GPUずつ配置し、各GPUを独立したlogical instanceとする。GH200 profileがない環境で構成だけを確認する場合は[`configs/gh200_class_20gpu_proxy.json`](configs/gh200_class_20gpu_proxy.json)を使用する。
+Cluster設定は[`configs/rtx4090_100gpu.json`](configs/rtx4090_100gpu.json)である。100 nodeに1 GPUずつ配置し、各GPUを独立したlogical instanceとする。Repositoryに含まれるRTX4090・Llama 3.1 8B・TP1のprofileをそのまま使用する。
 
 | 項目 | 値 |
 |---|---:|
-| GPU memory | 96 GB HBM3 |
-| GPU memory bandwidth | 4,000 GB/s |
-| Grace CPU memory | 480 GB LPDDR5X |
-| Grace CPU memory bandwidth | 500 GB/s |
-| GPU backbone | 50 GB/s、20 µs |
+| GPU memory | 24 GB |
+| GPU memory bandwidth | 1,008 GB/s |
+| Host memory | 128 GB/node |
+| Host memory bandwidth | 33.8 GB/s |
+| GPU backbone | 16 GB/s、20 µs |
 | Model | Llama 3.1 8B |
-| Parallelism | TP=1、PP=1、20 replicas |
+| Parallelism | TP=1、PP=1、100 replicas |
 
-NVIDIAのGH200仕様には96 GB HBM3・最大4 TB/sと144 GB HBM3e・最大4.9 TB/sの構成がある。本実験では保守的な96 GB HBM3構成を採用した。
-
-重要な制約として、現在のrepositoryにはGH200の`profiler/perf`データがない。そこでcluster configの`hardware`は実行可能性のため`RTXPRO6000`を指定し、計算latencyは既存profileをproxyとして使う。Memory capacityとbandwidthはGH200級だが、GH200の計算性能を正確に再現する設定ではない。正確な評価にはGH200実機でprofileを取得し、`hardware`を置き換える必要がある。
-
-GH200仕様の根拠は[NVIDIA Grace Performance Tuning Guide](https://docs.nvidia.com/dccpu/grace-perf-tuning-guide/index.html)を参照する。
+GPU・host memory値は既存の[`configs/cluster/ten_node_rtx4090_apn.json`](../../configs/cluster/ten_node_rtx4090_apn.json)と揃えている。
 
 ## 7. 出力
 
 - `workloads/*.jsonl`: 3 load levels × 3 seeds
 - `placements/users.csv`: 200,000 usersの座標と近傍GPU
-- `placements/gpus.csv`: 20 GPUsの座標
+- `placements/gpus.csv`: 100 GPUsの座標
 - `configs/workload_manifest.csv`: workloadごとのrateとtoken統計
 - `configs/experiment.json`: 全仮定と生成結果
-- `configs/gh200_20gpu.json`: GH200実機profileを使用するcluster config
-- `configs/gh200_class_20gpu_proxy.json`: simulator cluster config
+- `configs/rtx4090_100gpu.json`: RTX 4090×100台のsimulator cluster config
 
 ## 8. 再生成
 
@@ -118,3 +113,46 @@ python3 experiments/2026-07-31_new_workload/scripts/prepare_workloads.py
 ```bash
 python3 experiments/2026-07-31_new_workload/scripts/validate.py
 ```
+
+## 9. Simulator実行例
+
+RTX4090 profileはrepository内の`profiler/perf/RTX4090/meta-llama/Llama-3.1-8B/bf16/tp1/`を使用するため、新たなprofilingは不要である。
+
+Simulator containerを起動し、初回のみbuildする。
+
+```bash
+./scripts/docker-sim.sh
+```
+
+Container内で実行する。
+
+```bash
+./scripts/compile.sh
+mkdir -p experiments/2026-07-31_new_workload/results/busy_hour_seed1
+```
+
+```bash
+python3 -m serving \
+  --cluster-config experiments/2026-07-31_new_workload/configs/rtx4090_100gpu.json \
+  --dataset experiments/2026-07-31_new_workload/workloads/busy_hour_seed1.jsonl \
+  --request-routing-policy NEAREST \
+  --num-reqs 3000 \
+  --dtype bfloat16 \
+  --kv-cache-dtype auto \
+  --max-num-seqs 128 \
+  --max-num-batched-tokens 2048 \
+  --enable-chunked-prefill \
+  --no-enable-prefix-caching \
+  --graph-converter in-process \
+  --trace-io buffered \
+  --output experiments/2026-07-31_new_workload/results/busy_hour_seed1/requests.csv \
+  --geographic-user-output experiments/2026-07-31_new_workload/results/busy_hour_seed1/users.csv \
+  --geographic-gpu-output experiments/2026-07-31_new_workload/results/busy_hour_seed1/gpus.csv \
+  --geographic-metadata-output experiments/2026-07-31_new_workload/results/busy_hour_seed1/metadata.json \
+  --geographic-users-csv experiments/2026-07-31_new_workload/placements/users.csv \
+  --geographic-gpus-csv experiments/2026-07-31_new_workload/placements/gpus.csv \
+  --run-id rtx4090-100gpu-busy-hour-seed1 \
+  --log-level WARNING
+```
+
+最初は`--num-reqs 1`へ変更してsmoke testを行い、その後3,000 requestsへ増やすことを推奨する。
