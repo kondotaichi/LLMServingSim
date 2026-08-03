@@ -10,7 +10,7 @@ import math
 from pathlib import Path
 
 PP_GROUP_SIZE = 2
-NUM_PHYSICAL_GPUS = 12
+NUM_PHYSICAL_GPUS = 24
 NUM_PP_GROUPS = NUM_PHYSICAL_GPUS // PP_GROUP_SIZE
 
 

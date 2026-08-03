@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Build the Hongo (Bunkyo-ku) workload: real ShareGPT session content laid
-over the UTokyo Hongo campus alone (residential zone dropped -- see
-report/design.md for why: a fixed, campus-scaled GPU count with no
-residential-zone redirect overflow makes system-wide saturation -- and a
-non-trivial "Router queue" even under the capacity-based redirect policy --
-reachable without needing an unrealistically high per-user request rate).
+over a two-zone geography (UTokyo campus + residential) with role-segmented
+daily-active-user rates. See report/design.md for the full derivation.
+
+2026-08-03: reverted from the campus-only, GPU-count-constrained variant
+back to this two-zone design. Rather than engineering a permanent system-
+wide saturation into the population/GPU model (which made the simulation
+itself intractably slow), Router-queue severity for the redirect-policy
+comparison is now tuned directly via the load-level rate (jq time-
+compression on top of the generated peak_2x/peak_3x workloads -- see
+scripts in the parent experiment dir), leaving this generator's population/
+geography/GPU-count assumptions untouched.
 
 Usage:
     python3 -m workloads.generators sharegpt \\
@@ -36,25 +42,28 @@ WORKLOAD_DIR = EXPERIMENT_DIR / "workloads"
 
 PREFIX = "hongo"
 
-# --- Geography (report/design.md section 2): campus alone, its own square. ---
+# --- Geography (report/design.md section 2) ---
+TOTAL_AREA_KM2 = 1.363
+SIDE_M = math.sqrt(TOTAL_AREA_KM2) * 1000.0          # ~1167.5 m
 CAMPUS_AREA_KM2 = 0.56
-SIDE_M = math.sqrt(CAMPUS_AREA_KM2) * 1000.0          # ~748.3 m
-TOTAL_AREA_KM2 = CAMPUS_AREA_KM2
+CAMPUS_WIDTH_M = CAMPUS_AREA_KM2 * 1_000_000.0 / SIDE_M   # ~479.6 m
+RESIDENTIAL_WIDTH_M = SIDE_M - CAMPUS_WIDTH_M              # ~687.9 m
 
 # --- Population (section 1) ---
+RESIDENTIAL_POPULATION = 22_259
 CAMPUS_POPULATION = 27_000  # 21,000 students + 3,963 faculty + ~2,000 staff (estimate)
 
-# --- GPU allocation (section 3): fixed at 12 (campus's own former share of
-# the two-zone 24-GPU design). With no residential zone to redirect overflow
-# into, this is deliberately *not* rescaled down for the smaller population,
-# so system-wide saturation is reachable without an extreme request rate. ---
+# --- GPU allocation (section 3): population-proportional (~13:11), rounded
+# to two clean 3x4 grids for simplicity. ---
 CAMPUS_GPU_ROWS, CAMPUS_GPU_COLS = 3, 4
-NUM_GPUS = CAMPUS_GPU_ROWS * CAMPUS_GPU_COLS  # 12
+RESIDENTIAL_GPU_ROWS, RESIDENTIAL_GPU_COLS = 3, 4
+NUM_GPUS = CAMPUS_GPU_ROWS * CAMPUS_GPU_COLS + RESIDENTIAL_GPU_ROWS * RESIDENTIAL_GPU_COLS  # 24
 
 PLACEMENT_SEED = 20_260_801
 
 # --- Segment-specific daily-active-user rates (section 5) ---
 SEGMENTS = {
+    "resident": {"population": RESIDENTIAL_POPULATION, "dau_fraction": 0.10, "requests_per_active_user_day": 20.0},
     "campus": {"population": CAMPUS_POPULATION, "dau_fraction": 0.20, "requests_per_active_user_day": 40.0},
 }
 BUSY_HOUR_DAILY_SHARE = 0.15
@@ -83,15 +92,23 @@ def request_rates() -> dict[str, float]:
 
 
 def gpu_positions() -> list[dict]:
-    """Return [{gpu_id, gpu_x_m, gpu_y_m, zone}] laid out over the campus
-    square alone (single zone, no residential-zone redirect overflow)."""
+    """Return [{gpu_id, gpu_x_m, gpu_y_m, zone}], campus block first (x in
+    [0, CAMPUS_WIDTH_M]), residential block second (x in [CAMPUS_WIDTH_M,
+    SIDE_M])."""
     positions = []
     for row in range(CAMPUS_GPU_ROWS):
         for col in range(CAMPUS_GPU_COLS):
             positions.append({
-                "gpu_x_m": (col + 0.5) * SIDE_M / CAMPUS_GPU_COLS,
+                "gpu_x_m": (col + 0.5) * CAMPUS_WIDTH_M / CAMPUS_GPU_COLS,
                 "gpu_y_m": (row + 0.5) * SIDE_M / CAMPUS_GPU_ROWS,
                 "zone": "campus",
+            })
+    for row in range(RESIDENTIAL_GPU_ROWS):
+        for col in range(RESIDENTIAL_GPU_COLS):
+            positions.append({
+                "gpu_x_m": CAMPUS_WIDTH_M + (col + 0.5) * RESIDENTIAL_WIDTH_M / RESIDENTIAL_GPU_COLS,
+                "gpu_y_m": (row + 0.5) * SIDE_M / RESIDENTIAL_GPU_ROWS,
+                "zone": "residential",
             })
     for gpu_id, entry in enumerate(positions):
         entry["gpu_id"] = gpu_id
@@ -111,10 +128,16 @@ def create_placements(positions: list[dict]) -> list[dict]:
     rng = random.Random(PLACEMENT_SEED)
     users = []
     user_id = 0
+    zone_bounds = {
+        "campus": (0.0, CAMPUS_WIDTH_M),
+        "residential": (CAMPUS_WIDTH_M, SIDE_M),
+    }
     for segment_name, seg in SEGMENTS.items():
+        zone = "campus" if segment_name == "campus" else "residential"
+        x_min, x_max = zone_bounds[zone]
         n = int(seg["population"])
         for _ in range(n):
-            xy = (rng.uniform(0.0, SIDE_M), rng.uniform(0.0, SIDE_M))
+            xy = (rng.uniform(x_min, x_max), rng.uniform(0.0, SIDE_M))
             nearest_id, dist, second_id, second_dist = nearest_two(xy, positions)
             users.append({
                 "user_id": user_id,
@@ -191,9 +214,9 @@ def load_session_content(path: Path) -> list[dict]:
 
 
 def assign_users(content_rows: list[dict], users: list[dict], seed: int) -> dict[int, dict]:
-    """Pin each session_id to one user (drawn uniformly across the campus
-    population, without replacement while the pool lasts), so all of a
-    session's turns share one location."""
+    """Pin each session_id to one user (drawn uniformly across the *whole*
+    population -- residents and campus users mixed -- without replacement
+    while the pool lasts), so all of a session's turns share one location."""
     rng = random.Random(seed)
     pool = list(range(len(users)))
     rng.shuffle(pool)
@@ -306,6 +329,7 @@ def build_workload(
         "duration_s": send_times[-1] / 1e9,
         "mean_input_toks": sum(input_counts) / n,
         "campus_requests": segment_counts["campus"],
+        "resident_requests": segment_counts["resident"],
         "min_requests_per_gpu": min(gpu_counts.values()),
         "max_requests_per_gpu": max(gpu_counts.values()),
         "workload": f"workloads/{PREFIX}_{label}_seed{seed}.jsonl",
@@ -349,14 +373,16 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(manifests)
 
-    print(f"Wrote {len(users):,} campus users and {len(positions)} GPUs "
+    print(f"Wrote {len(users):,} users ({CAMPUS_POPULATION:,} campus + "
+          f"{RESIDENTIAL_POPULATION:,} resident) and {len(positions)} GPUs "
           f"({TOTAL_AREA_KM2} km^2)")
     print(f"Content pool: {len(content_rows):,} requests, "
           f"{len({r['session_id'] for r in content_rows}):,} unique sessions")
     for manifest in manifests:
         print(f"  {manifest['condition']}: {manifest['requests']:,} requests, "
               f"return-visit rate={manifest['return_visit_rate']*100:.1f}%, "
-              f"duration={manifest['duration_s']:.0f}s")
+              f"duration={manifest['duration_s']:.0f}s, "
+              f"campus={manifest['campus_requests']}, resident={manifest['resident_requests']}")
 
 
 if __name__ == "__main__":
