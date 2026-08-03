@@ -37,6 +37,7 @@ run_one() {
     --apn-fixed-propagation-ns 300500 \
     --kv-staging-bandwidth-gbytes-per-s 33.8 \
     --kv-staging-latency-ns 102.9 \
+    --inputs-root "/tmp/astra_runs/${run_name}" \
     --output "$outdir/requests.csv" \
     --geographic-user-output "$outdir/users.csv" \
     --geographic-gpu-output "$outdir/gpus.csv" \
