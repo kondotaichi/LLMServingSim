@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a cluster config for a given PP degree over the fixed 24-GPU
+"""Generate a cluster config for a given PP degree over the fixed 12-GPU
 Hongo pool: NUM_PHYSICAL_GPUS / pp_size logical instances, one node per
 instance. Each instance is written with pp_size=1 / num_npus=1; the actual
 PP degree is applied at run time via `python -m serving --pp-size N`
@@ -11,15 +11,15 @@ import argparse
 import json
 from pathlib import Path
 
-NUM_PHYSICAL_GPUS = 24
+DEFAULT_NUM_PHYSICAL_GPUS = 12
 MODEL_NAME = "meta-llama/Llama-3.1-8B"
 HARDWARE = "RTX4090"
 
 
-def cluster_config(pp_size: int) -> dict:
-    if NUM_PHYSICAL_GPUS % pp_size != 0:
-        raise ValueError(f"pp-size {pp_size} must divide NUM_PHYSICAL_GPUS ({NUM_PHYSICAL_GPUS})")
-    num_instances = NUM_PHYSICAL_GPUS // pp_size
+def cluster_config(pp_size: int, num_physical_gpus: int) -> dict:
+    if num_physical_gpus % pp_size != 0:
+        raise ValueError(f"pp-size {pp_size} must divide NUM_PHYSICAL_GPUS ({num_physical_gpus})")
+    num_instances = num_physical_gpus // pp_size
     nodes = []
     for _ in range(num_instances):
         nodes.append({
@@ -42,10 +42,16 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--pp-size", type=int, required=True)
     ap.add_argument("--output", required=True)
+    ap.add_argument("--num-physical-gpus", type=int, default=DEFAULT_NUM_PHYSICAL_GPUS)
     args = ap.parse_args()
 
-    Path(args.output).write_text(json.dumps(cluster_config(args.pp_size), indent=2) + "\n")
-    print(f"Wrote {args.output} ({NUM_PHYSICAL_GPUS // args.pp_size} instances at pp_size={args.pp_size})")
+    Path(args.output).write_text(
+        json.dumps(cluster_config(args.pp_size, args.num_physical_gpus), indent=2) + "\n"
+    )
+    print(
+        f"Wrote {args.output} "
+        f"({args.num_physical_gpus // args.pp_size} instances at pp_size={args.pp_size})"
+    )
 
 
 if __name__ == "__main__":

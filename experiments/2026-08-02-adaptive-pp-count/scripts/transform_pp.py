@@ -15,8 +15,6 @@ import json
 import math
 from pathlib import Path
 
-NUM_PHYSICAL_GPUS = 24
-
 
 def pp_group_id(physical_gpu_id: int, pp_size: int) -> int:
     return physical_gpu_id // pp_size
@@ -57,13 +55,14 @@ def main() -> None:
     ap.add_argument("--pp-size", type=int, required=True)
     args = ap.parse_args()
 
-    if NUM_PHYSICAL_GPUS % args.pp_size != 0:
-        raise ValueError(
-            f"pp-size {args.pp_size} must divide NUM_PHYSICAL_GPUS ({NUM_PHYSICAL_GPUS})"
-        )
-    num_groups = NUM_PHYSICAL_GPUS // args.pp_size
-
     positions = group_positions(Path(args.gpus_csv))
+    num_physical_gpus = len(positions)
+
+    if num_physical_gpus % args.pp_size != 0:
+        raise ValueError(
+            f"pp-size {args.pp_size} must divide NUM_PHYSICAL_GPUS ({num_physical_gpus})"
+        )
+    num_groups = num_physical_gpus // args.pp_size
 
     rows = []
     with open(args.input) as f:
@@ -91,8 +90,10 @@ def main() -> None:
         for row in rows:
             f.write(json.dumps(row, separators=(",", ":")) + "\n")
 
-    print(f"Wrote {len(rows)} requests -> {args.output} "
-          f"({NUM_PHYSICAL_GPUS} physical GPUs -> {num_groups} PP{args.pp_size} groups)")
+    print(
+        f"Wrote {len(rows)} requests -> {args.output} "
+        f"({num_physical_gpus} physical GPUs -> {num_groups} PP{args.pp_size} groups)"
+    )
 
 
 if __name__ == "__main__":

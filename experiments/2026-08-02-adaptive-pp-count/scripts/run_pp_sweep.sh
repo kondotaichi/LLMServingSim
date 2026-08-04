@@ -1,29 +1,32 @@
 #!/usr/bin/env bash
-# Sweep PP degree over the fixed 24-GPU Hongo pool, holding routing policy
+# Sweep PP degree over the fixed 12-GPU Hongo pool, holding routing policy
 # fixed at the best-performing arm found in 2026-08-01_hongo_workload
 # (redirect + KV migration + proactive prewarm, i.e. that experiment's arm5):
 #   --request-routing-policy NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE
 #   --enable-proactive-kv-prewarm --proactive-kv-prewarm-pressure-threshold 0.6
 #   --proactive-kv-prewarm-top-k 3
 #
-# PP degrees are restricted to divisors of 24 (the fixed physical GPU pool)
-# so every PP group has an equal GPU count: 1 2 3 4 6 8. (24 is not
-# divisible by 5, so PP5 is skipped -- an uneven last group would bias that
-# arm's comparison.)
+# PP degrees are restricted to divisors of 12 (the fixed physical GPU pool)
+# so every PP group has an equal GPU count: 1 2 3 4 6 12. (12 is not
+# divisible by 5 or 8, so those arms are skipped -- an uneven last group
+# would bias the comparison.)
 set -uo pipefail
 
 ROOT=/app/LLMServingSim
 EXP=experiments/2026-08-02-adaptive-pp-count
 SRC=experiments/2026-08-01_hongo_workload
 MAX_PARALLEL="${MAX_PARALLEL:-2}"
-NUM_REQS="${NUM_REQS:-2000}"
-PP_SIZES="${PP_SIZES:-1 2 3 4 6 8}"
+NUM_REQS="${NUM_REQS:-300}"
+LOAD_LEVEL="${LOAD_LEVEL:-peak_5x}"
+SEED="${SEED:-1}"
+PP_SIZES="${PP_SIZES:-1 2 3 4 6 12}"
 
 cd "$ROOT"
+mkdir -p "$EXP/logs" "$EXP/results" "$EXP/workloads" "$EXP/configs"
 
 run_one() {
   local pp_size="$1"
-  local run_name="pp${pp_size}"
+  local run_name="${LOAD_LEVEL}_seed${SEED}_pp${pp_size}"
   local outdir="$EXP/results/${run_name}"
   local cluster dataset
   mkdir -p "$outdir"
@@ -35,13 +38,16 @@ run_one() {
 
   if [ "$pp_size" -eq 1 ]; then
     cluster="$SRC/configs/rtx4090_hongo.json"
-    dataset="$SRC/workloads/hongo_peak_3x_seed1.jsonl"
+    dataset="$SRC/workloads/hongo_${LOAD_LEVEL}_seed${SEED}.jsonl"
   else
     cluster="$EXP/configs/rtx4090_hongo_pp${pp_size}.json"
-    dataset="$EXP/workloads/hongo_peak_3x_seed1_pp${pp_size}.jsonl"
-    python3 "$EXP/scripts/make_pp_cluster_config.py" --pp-size "$pp_size" --output "$cluster"
+    dataset="$EXP/workloads/hongo_${LOAD_LEVEL}_seed${SEED}_pp${pp_size}.jsonl"
+    python3 "$EXP/scripts/make_pp_cluster_config.py" \
+      --pp-size "$pp_size" \
+      --num-physical-gpus 12 \
+      --output "$cluster"
     python3 "$EXP/scripts/transform_pp.py" \
-      --input "$SRC/workloads/hongo_peak_3x_seed1.jsonl" \
+      --input "$SRC/workloads/hongo_${LOAD_LEVEL}_seed${SEED}.jsonl" \
       --output "$dataset" \
       --gpus-csv "$SRC/placements/hongo_gpus.csv" \
       --pp-size "$pp_size"
@@ -101,4 +107,4 @@ for pp_size in $PP_SIZES; do
 done
 
 wait
-echo "=== PP sweep finished (PP_SIZES=$PP_SIZES) ==="
+echo "=== PP sweep finished (LOAD_LEVEL=$LOAD_LEVEL, PP_SIZES=$PP_SIZES) ==="
