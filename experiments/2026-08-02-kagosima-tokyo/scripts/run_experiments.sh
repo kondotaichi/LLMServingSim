@@ -35,13 +35,14 @@ run_sim() {
   local extra=("$@")
   local out="${RES}/${arm}"
   mkdir -p "${out}"
-  local logfile="${LOG}/$(echo "${arm}" | tr '/' '_').log"
+  local run_name="${arm//\//-}"
+  local logfile="${LOG}/${arm//\//_}.log"
 
   TEMPORARILY_DISABLE_PROTOBUF_VERSION_CHECK=true \
   PYTHONUNBUFFERED=1 python3 -u -m serving \
     --cluster-config "${config}" \
     --dataset "${wl}" \
-    --num-reqs 1000 \
+    --num-reqs 300 \
     --request-routing-policy "${policy}" \
     "${COMMON[@]}" \
     "${extra[@]}" \
@@ -53,7 +54,8 @@ run_sim() {
     --geographic-gpus-csv                   "${gpus_csv}" \
     --gpu-utilization-timeseries-output     "${out}/gpu_utilization_timeseries.csv" \
     --gpu-utilization-window-ns 1000000000 \
-    --run-id "$(echo "${arm}" | tr '/' '-')" \
+    --inputs-root "/tmp/astra_runs/${run_name}" \
+    --run-id "${run_name}" \
     >"${logfile}" 2>&1
   echo "[done] ${arm}"
 }
