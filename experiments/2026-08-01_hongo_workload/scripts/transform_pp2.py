@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Remap a hongo_*.jsonl workload's physical GPU IDs (0-23) onto 12 logical
-PP2 groups (2 adjacent physical GPUs each: group_id = physical_id // 2),
-matching the pp2_five_workloads precedent (prepare_workloads.py::transform).
-"""
+"""Remap a hongo_*.jsonl workload onto PP2 groups using the current GPU CSV."""
 
 import argparse
 import json
@@ -10,8 +7,6 @@ import math
 from pathlib import Path
 
 PP_GROUP_SIZE = 2
-NUM_PHYSICAL_GPUS = 24
-NUM_PP_GROUPS = NUM_PHYSICAL_GPUS // PP_GROUP_SIZE
 
 
 def pp_group_id(physical_gpu_id: int) -> int:
@@ -28,11 +23,15 @@ def group_positions(gpus_csv: Path) -> dict[int, tuple[float, float]]:
     return positions
 
 
-def nearest_other_group(row: dict, positions: dict[int, tuple[float, float]]) -> tuple[int, float]:
+def nearest_other_group(
+    row: dict,
+    positions: dict[int, tuple[float, float]],
+    num_pp_groups: int,
+) -> tuple[int, float]:
     home_group = pp_group_id(int(row["gpu_id"]))
     user_x, user_y = float(row["user_x_m"]), float(row["user_y_m"])
     candidates = []
-    for group_id in range(NUM_PP_GROUPS):
+    for group_id in range(num_pp_groups):
         if group_id == home_group:
             continue
         distance = min(
@@ -52,6 +51,12 @@ def main() -> None:
     args = ap.parse_args()
 
     positions = group_positions(Path(args.gpus_csv))
+    num_physical_gpus = len(positions)
+    if num_physical_gpus % PP_GROUP_SIZE != 0:
+        raise ValueError(
+            f"Physical GPU count {num_physical_gpus} is not divisible by PP group size {PP_GROUP_SIZE}."
+        )
+    num_pp_groups = num_physical_gpus // PP_GROUP_SIZE
 
     rows = []
     with open(args.input) as f:
@@ -62,7 +67,7 @@ def main() -> None:
         physical_home = int(row["gpu_id"])
         physical_second = int(row["second_nearest_gpu_id"])
         group_id = pp_group_id(physical_home)
-        second_group_id, second_group_distance = nearest_other_group(row, positions)
+        second_group_id, second_group_distance = nearest_other_group(row, positions, num_pp_groups)
         row.update({
             "physical_assigned_instance_id": physical_home,
             "physical_second_nearest_gpu_id": physical_second,
@@ -78,7 +83,7 @@ def main() -> None:
             f.write(json.dumps(row, separators=(",", ":")) + "\n")
 
     print(f"Wrote {len(rows)} requests -> {args.output} "
-          f"({NUM_PHYSICAL_GPUS} physical GPUs -> {NUM_PP_GROUPS} PP2 groups)")
+          f"({num_physical_gpus} physical GPUs -> {num_pp_groups} PP2 groups)")
 
 
 if __name__ == "__main__":

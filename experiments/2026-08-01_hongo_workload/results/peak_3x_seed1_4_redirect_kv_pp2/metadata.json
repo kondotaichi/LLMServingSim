@@ -1,0 +1,32 @@
+{
+  "num_users": 27000,
+  "num_gpus": 12,
+  "num_instances": 6,
+  "model_name": "meta-llama/Llama-3.1-8B",
+  "gpu_hardware": "RTX4090",
+  "dataset": "experiments/2026-08-01_hongo_workload/workloads/hongo_peak_3x_seed1_pp2.jsonl",
+  "cluster_config": "experiments/2026-08-01_hongo_workload/configs/rtx4090_hongo_pp2.json",
+  "request_routing_policy": "NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE",
+  "max_num_seqs": 128,
+  "max_num_batched_tokens": 2048,
+  "output_files": {
+    "requests": "experiments/2026-08-01_hongo_workload/results/peak_3x_seed1_4_redirect_kv_pp2/requests.csv",
+    "users": "experiments/2026-08-01_hongo_workload/results/peak_3x_seed1_4_redirect_kv_pp2/users.csv",
+    "gpus": "experiments/2026-08-01_hongo_workload/results/peak_3x_seed1_4_redirect_kv_pp2/gpus.csv",
+    "gpu_utilization_timeseries": null
+  },
+  "git_commit_hash": null,
+  "network_model": "fixed_throughput_distance_proportional",
+  "network_contention": false,
+  "network_queueing": false,
+  "network_jitter": false,
+  "packet_loss": false,
+  "user_mobility": false,
+  "routing_policy": "nearest_capacity_multi_pressure_kv_reserve",
+  "ttft_definition": "simulator_ttft_ns = first_token_ready_time_ns - gpu_arrival_time_ns (== req.arrival); e2e_ttft_ns = uplink_latency_ns + simulator_ttft_ns + downlink_latency_ns",
+  "prefill_service_definition": "sum of wall-clock batch durations (ASTRA-Sim-reported finish_time_ns - batch start) over every batch a request participated in while its TTFT was not yet stamped; a batch's full duration is attributed to every request in it (not divided), representing each request's own wall-clock experience rather than an exclusive GPU-time allocation",
+  "gpu_utilization_definition": "union of completed real-batch wall-clock intervals divided by the global workload observation window from the earliest request send to the latest request completion; overlapping pipeline batch intervals are merged, and dummy DP synchronization batches are excluded",
+  "gpu_utilization_window_ns": 1000000000,
+  "decode_definition": "decode_after_ttft_ns = decode_queueing_ns + decode_active_ns, measured from first-token-ready to request completion; never added into e2e_ttft_ns",
+  "bottleneck_definition": "ttft_bottleneck = argmax(communication_latency_ns, queueing_before_ttft_ns, prefill_service_ns), ties broken queueing > prefill > communication; total_latency_bottleneck additionally compares decode_after_ttft_ns, ties broken queueing > prefill > decode > communication"
+}
