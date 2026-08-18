@@ -2,17 +2,17 @@
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
-  echo "Usage: $0 s3://bucket/prefix" >&2
+  echo "Usage: $0 https://account.blob.core.windows.net/container/prefix" >&2
   exit 2
 fi
 
 repo_root="$(git rev-parse --show-toplevel)"
-experiment_dir="$repo_root/experiments/2026-08-17_aws_selfhost_vs_local"
+experiment_dir="$repo_root/experiments/2026-08-17_azure_selfhost_vs_local"
 manifest="$experiment_dir/workloads/manifests/hongo_seed1.csv"
-s3_prefix="${1%/}"
+blob_prefix="${1%/}"
 
-command -v aws >/dev/null || {
-  echo "aws CLI is required" >&2
+command -v azcopy >/dev/null || {
+  echo "AzCopy is required" >&2
   exit 1
 }
 
@@ -25,8 +25,8 @@ while IFS=, read -r load filename source_path object_key requests unique_session
   if [[ "$load" == "load" ]]; then
     continue
   fi
-  aws s3 cp "$repo_root/$source_path" "$s3_prefix/$object_key" --only-show-errors
+  azcopy copy "$repo_root/$source_path" "$blob_prefix/$object_key"
 done < "$manifest"
 
-aws s3 cp "$manifest" "$s3_prefix/manifests/hongo_seed1.csv" --only-show-errors
-echo "Uploaded and locally verified Hongo workloads to $s3_prefix"
+azcopy copy "$manifest" "$blob_prefix/manifests/hongo_seed1.csv"
+echo "Uploaded and locally verified Hongo workloads to $blob_prefix"

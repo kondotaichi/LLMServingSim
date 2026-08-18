@@ -2,18 +2,18 @@
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
-  echo "Usage: $0 s3://bucket/prefix" >&2
+  echo "Usage: $0 https://account.blob.core.windows.net/container/prefix" >&2
   exit 2
 fi
 
 repo_root="$(git rev-parse --show-toplevel)"
-experiment_dir="$repo_root/experiments/2026-08-17_aws_selfhost_vs_local"
+experiment_dir="$repo_root/experiments/2026-08-17_azure_selfhost_vs_local"
 manifest="$experiment_dir/workloads/manifests/hongo_seed1.csv"
 destination="$experiment_dir/workloads/hongo"
-s3_prefix="${1%/}"
+blob_prefix="${1%/}"
 
-command -v aws >/dev/null || {
-  echo "aws CLI is required" >&2
+command -v azcopy >/dev/null || {
+  echo "AzCopy is required" >&2
   exit 1
 }
 
@@ -22,7 +22,7 @@ while IFS=, read -r load filename source_path object_key requests unique_session
   if [[ "$load" == "load" ]]; then
     continue
   fi
-  aws s3 cp "$s3_prefix/$object_key" "$destination/$filename" --only-show-errors
+  azcopy copy "$blob_prefix/$object_key" "$destination/$filename"
 done < "$manifest"
 
 python3 "$experiment_dir/scripts/validate_workloads.py" \

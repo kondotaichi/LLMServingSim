@@ -7,13 +7,14 @@
 
 | 項目 | 決定 | 状態 |
 |---|---|---|
-| Cloud方式 | AWS EC2上への同一モデルのセルフホスト | 確定 |
+| Cloud方式 | Azure VM上への同一モデルのセルフホスト | 確定 |
 | Managed API | 今回は対象外 | 確定 |
 | Model | Meta Llama 3.1 8B | 暫定、revision未固定 |
 | Serving engine | vLLM v0.19.0 | 暫定、image digest未固定 |
-| Primary AWS GPU | G6/L4 1-GPU instance候補 | Phase 0確認待ち |
-| Fallback AWS GPU | G6e/L40S | Phase 0確認待ち |
-| AWS GPU数 | 12 | Quota/capacity確認待ち |
+| Primary Azure VM | `Standard_ND96asr_v4`（A100 40 GB×8） | Phase 0でregion/quota確認 |
+| Fallback Azure VM | `Standard_ND96amsr_A100_v4`（A100 80 GB×8） | Phase 0でregion/quota確認 |
+| Azure GPU数 | 単一VMのA100×8、vLLM TP=8 | 確定 |
+| Cloud/local GPU数 | Azure 8枚対local 12枚で不一致 | GPU当たり指標を併記 |
 | Primary workload | Hongo 2000件、Peak 2x/5x/10x | 確定 |
 | Proactive KV prewarm | 比較対象外 | 確定 |
 

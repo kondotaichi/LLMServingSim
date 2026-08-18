@@ -1,13 +1,13 @@
-# AWSセルフホストLLMとローカル分散LLMの性能・コスト比較計画
+# AzureセルフホストLLMとローカル分散LLMの性能・コスト比較計画
 
 ## 0. 文書の目的
 
-本計画は、AWS上にセルフホストしたLLMと、LLMServingSimで想定するローカル分散LLMを、
-同一モデル・同一ワークロードで比較するための実験仕様である。AWS上で作業するCodexへ
+本計画は、Microsoft Azure上にセルフホストしたLLMと、LLMServingSimで想定するローカル分散LLMを、
+同一モデル・同一ワークロードで比較するための実験仕様である。Azure上で作業するCodexへ
 この文書と対象リポジトリを渡し、環境構築、workload replay、計測、artifact回収を依頼
 できる状態にすることを目的とする。
 
-Amazon Bedrockなどのmanaged APIは今回の対象外とする。AWS側でもモデルとserving
+Azure OpenAI Serviceなどのmanaged APIは今回の対象外とする。Azure側でもモデルとserving
 softwareを自分たちで固定し、ブラックボックスなモデル差を避ける。
 
 この文書は実験前の契約である。結果を見た後に有利なinstance、負荷点、timeout、集計対象を
@@ -19,25 +19,25 @@ softwareを自分たちで固定し、ブラックボックスなモデル差を
 ### 1.1 主質問
 
 同一のMeta Llama 3.1 8B、同一の生成token数、同一のopen-loop arrival scheduleを使った
-とき、AWS集中型poolとローカル分散LLMの間で、次がどう異なるか。
+とき、Azureの単一8-GPU nodeとローカル分散LLMの間で、次がどう異なるか。
 
 1. E2E TTFT、TPOT、completion latency、tail latency
 2. 最大持続throughputとSLO達成率
 3. 高負荷時のqueueing、redirect、KV容量不足
 4. 1,000 successful requestsおよび100万生成token当たりのコスト
-5. どのrequest rate／設備利用率でAWSとローカルのTCOが逆転するか
+5. どのrequest rate／設備利用率でAzureとローカルのTCOが逆転するか
 
 ### 1.2 副質問
 
-- AWSの集中配置は、ローカル配置より大きなnetwork latencyを負ってもqueueingを減らせるか
-- ローカルPP2 + KV migrateは、AWS poolに対してどの負荷点までTTFT優位を保てるか
+- Azureの集中配置は、ローカル配置より大きなnetwork latencyを負ってもqueueingを減らせるか
+- ローカルPP2 + KV migrateは、AzureのTP=8 nodeに対してどの負荷点までTTFT優位を保てるか
 - ローカル側の出力長制御は、Router queueが発生する領域でSLO/costを改善するか
-- AWSとローカルの差のうち、hardware差、network差、serving policy差はどの程度か
+- Azureとローカルの差のうち、hardware差、network差、serving policy差はどの程度か
 
 ## 2. この実験で主張しないこと
 
-- RTX 4090とAWS GPUのkernel性能が同一であるとは仮定しない
-- AWSの可用性一般や、全regionの価格を代表するとは主張しない
+- RTX 4090とAzure A100のkernel性能が同一であるとは仮定しない
+- Azureの可用性一般や、全regionの価格を代表するとは主張しない
 - 1 seedの結果を一般化しない
 - 異なるモデル品質を含む比較は行わない
 - Simulatorの値を実機測定値として扱わない
@@ -49,7 +49,7 @@ softwareを自分たちで固定し、ブラックボックスなモデル差を
 
 | ID | 環境 | 構成 | 目的 |
 |---|---|---|---|
-| `aws_pool` | AWS EC2 | 同一モデルの1-GPU replica pool | クラウド集中配置の実測 |
+| `azure_a100x8_tp8` | Azure VM | A100×8の単一node、vLLM TP=8 | クラウド集中配置の実測 |
 | `local_pp1_kv` | Simulator | Redirect + KV migrate、PP1 | ローカル基準 |
 | `local_pp2_kv` | Simulator | Redirect + KV migrate、PP2 | 現在のローカル推奨構成 |
 
@@ -60,9 +60,9 @@ softwareを自分たちで固定し、ブラックボックスなモデル差を
 
 | ID | 内容 | 用途 |
 |---|---|---|
-| `aws_single` | AWS 1 replica | 1 GPUのservice curve取得 |
-| `aws_pool_no_network` | AWSと同一AZのclient | service-only latency |
-| `aws_pool_e2e` | 本郷側client | Internet/WANを含むE2E latency |
+| `azure_a100x1` | Azure VM内の1 GPUだけを使用 | 1 GPUのservice curve取得（課金は8-GPU VM全体） |
+| `azure_a100x8_no_network` | Azureと同一zone/VNetのclient | service-only latency |
+| `azure_a100x8_e2e` | 本郷側client | Internet/WANを含むE2E latency |
 | `local_pp2_cold` | PP2 cold redirect | KV migrateの寄与分離 |
 
 診断Armを主比較へ後付けで混ぜない。
@@ -72,7 +72,7 @@ softwareを自分たちで固定し、ブラックボックスなモデル差を
 | 項目 | 固定値／方針 |
 |---|---|
 | Model | `meta-llama/Llama-3.1-8B` |
-| Weight dtype | `bfloat16`を第一候補。AWS GPUの対応確認後に固定 |
+| Weight dtype | `bfloat16`（A100で対応） |
 | KV dtype | `auto`／weight dtypeと整合。変更時は両環境を再評価 |
 | Tokenizer | Modelと同一revision |
 | Serving engine | vLLM v0.19.0 |
@@ -84,85 +84,77 @@ softwareを自分たちで固定し、ブラックボックスなモデル差を
 | Model revision | 実行前にcommit SHAを固定 |
 | Container | image tagだけでなくdigestを保存 |
 
-ローカルsimulatorはprofileとruntimeのvLLM/version、dtype、token budgetをAWS側metadataへも
-記録する。AWS側だけquantizationを使うなど、モデル実行条件を片側だけ変えてはならない。
+ローカルsimulatorはprofileとruntimeのvLLM/version、dtype、token budgetをAzure側metadataへも
+記録する。Azure側だけquantizationを使うなど、モデル実行条件を片側だけ変えてはならない。
 
-## 5. AWS構成
+## 5. Azure構成
 
 ### 5.1 Primary candidate
 
-主候補はNVIDIA L4 24 GBを搭載するEC2 G6の1-GPU instanceである。L4のメモリ容量が
-ローカルRTX 4090の24 GB構成に近いため、まずquota、region availability、実効VRAM、
-Llama 3.1 8B BF16の起動可否を確認する。AWS公式情報ではG6はL4を搭載し、最大8 GPU、
-GPU当たり24 GBの構成を提供する。
-
-G6でBF16 modelと必要なKV容量が安定して収まらない場合は、48 GB L40SのG6eをfallbackと
-する。G6eはhardware条件がローカルより有利になるため、結果では別hardwareとして明記する。
+主候補は`Standard_ND96asr_v4`（NVIDIA A100 40 GB×8）の単一VMとする。
+80 GB版が必要、または40 GB版が対象subscription/regionで確保できない場合は
+`Standard_ND96amsr_A100_v4`（A100 80 GB×8）をfallbackとする。両者はGPUメモリ容量が異なるため、
+pilotとfinalで混在させず、実際のGPU名、VRAM、VM SKUをmetadataに保存する。
 
 参考：
 
-- [Amazon EC2 G6 Instances](https://aws.amazon.com/ec2/instance-types/g6/)
-- [Amazon EC2 G6e Instances](https://aws.amazon.com/ec2/instance-types/g6e/)
-- [EC2 accelerated computing specifications](https://docs.aws.amazon.com/ec2/latest/instancetypes/ac.html)
+- [Azure ND family VM sizes](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/gpu-accelerated/nd-family)
+- [Azure NDm A100 v4 sizes](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/gpu-accelerated/ndma100v4-series)
 
-### 5.2 Pool構成
+### 5.2 Node構成
 
-Primaryは12個の1-GPU replicaを同一region・同一AZ・同一VPCへ配置する。これはローカル側の
-物理GPU 12台とGPU数を揃えるためである。
+PrimaryはA100×8を搭載した単一VMで、vLLMを`--tensor-parallel-size 8`で起動する。
+ローカル側の12 GPUとGPU数は揃わないため、これを「同一GPU数の比較」とは呼ばない。
+system比較に加え、GPU当たりのthroughput/costも併記する。
 
 ```text
 Load generator
       |
       v
-Experiment router
+Experiment endpoint/router
       |
-      +-- vLLM replica 0  (1 GPU)
-      +-- vLLM replica 1  (1 GPU)
-      +-- ...
-      +-- vLLM replica 11 (1 GPU)
+      +-- vLLM backend (TP=8, A100 x8 in one VM)
 ```
 
-Routerは実験用に制御可能な軽量routerを使う。Primary policyは`least-active-requests`とし、
-同率時はinstance IDで決定する。AWS ALB固有の不透明な分散だけに依存しない。Router自身の
-queue時間とbackend選択をrequest単位で記録する。
+Primaryでbackendは1つだが、入口のqueue時間とbackend response timeをrequest単位で記録する。
+Azure Load Balancer/Application Gatewayは必須とせず、使う場合はその追加latencyと課金を分離する。
 
-Quotaやcapacity不足で12 replicaを確保できない場合、勝手にGPU数を減らしてfinal結果を作ら
-ない。`aws ec2 describe-instance-type-offerings`、Service Quotas、実際のlaunch probeを記録し、
-次のいずれかを明示的に選ぶ。
+Quotaやcapacity不足でA100×8 VMを確保できない場合、GPU数の少ないSKUや別GPUでfinal結果を作らない。
+`az vm list-skus`、regional vCPU quota、SKU restriction、実際のdeployment probeを記録し、次のいずれかを明示的に選ぶ。
 
-1. 別AZ／regionで12 replicaを確保する
-2. 4または6 replicaのpilotとして実行し、finalとは呼ばない
-3. Multi-GPU instanceへ変更し、topology差を明記する
+1. 別zone／regionで同じA100×8 SKUを確保する
+2. 40 GB版と80 GB版を切り替え、hardware条件の変更を記録する
+3. 小さい構成でのpilotに限定し、finalとは呼ばない
 
 ### 5.3 Region
 
-利用者に近いAWS東京regionを第一候補とする。ただしG6/G6eの提供状況、quota、価格をAWS
-CLIで実測確認してから固定する。提供されない場合は、候補regionごとに本郷からのRTTと料金を
+利用者に近いAzure Japan Eastを第一候補とする。ただしND A100 v4/NDm A100 v4の提供状況、
+subscription quota、zone restriction、価格をAzure CLIで確認してから固定する。提供されない場合は、候補regionごとに本郷からのRTTと料金を
 記録し、結果を見る前にregionを選ぶ。
 
 ### 5.4 Network測定を二つに分ける
 
-1. `service-only`: 同一AZのload generatorからrouterへ送信
-2. `e2e`: 本郷側のload generatorからAWS endpointへ送信
+1. `service-only`: 同一zone/VNetのload generatorからendpointへ送信
+2. `e2e`: 本郷側のload generatorからAzure endpointへ送信
 
-AWS内部処理とWAN差を混ぜない。Primary system comparisonはE2E、原因分析はservice-onlyを
+Azure内部処理とWAN差を混ぜない。Primary system comparisonはE2E、原因分析はservice-onlyを
 用いる。Client側TTFTは単一のmonotonic clockで計測し、host間clock同期へ依存しない。
 
 ### 5.5 Infrastructure as Code
 
-TerraformまたはAWS CDKで次を再現可能にする。
+TerraformまたはBicepで次を再現可能にする。
 
-- VPC、private subnet、security group
+- Resource group、VNet、subnet、Network Security Group
 - Experiment router
-- GPU replica launch template
-- IAM role（最小権限）
-- S3 artifact bucket
-- CloudWatch log group
-- ECR repositoryまたは固定image参照
+- A100×8 GPU VM
+- Managed Identity/RBAC（最小権限）
+- Azure Blob Storage container
+- Azure Monitor/Log Analytics workspace
+- Azure Container Registryまたは固定image参照
 - Instance tag、experiment ID、owner、auto-expiry
 - `destroy`手順
 
-Public ingressは本郷側load generatorの固定IPだけに限定する。Model token、AWS credential、
+Public ingressは本郷側load generatorの固定IPだけに限定する。Model token、Azure credential、
 prompt本文をGitへ保存しない。
 
 ## 6. ワークロード
@@ -171,9 +163,9 @@ prompt本文をGitへ保存しない。
 
 `experiments/2026-08-09-test-some-workload/workloads/full/`にあるHongo 2000件版を使用する。
 先頭300件だけを切り出さない。セッション継続、入出力長、arrival order、ユーザー配置を維持する。
-正本ファイル名、SHA-256、統計、field semantics、AWS側の受入検査は
+正本ファイル名、SHA-256、統計、field semantics、Azure側の受入検査は
 `WORKLOAD_HANDOFF.md`を唯一の引き継ぎ仕様とする。対象JSONLはGit管理されていないため、repoの
-cloneとは別にAWS側へ転送し、hash一致を確認してから本計測を開始する。
+cloneとは別にAzure側へ転送し、hash一致を確認してから本計測を開始する。
 
 負荷点は次の順で実行する。
 
@@ -281,50 +273,48 @@ Pilot開始前に固定する。初期案は次のとおりで、変更する場
 - `nvidia-smi`またはDCGMによるGPU utilization、memory、power（1秒間隔）
 - Routerのqueue長、backend選択、backend response time
 
-ログ時刻はUTC、run ID付きとする。Raw logは加工せずS3へ保存する。
+ログ時刻はUTC、run ID付きとする。Raw logは加工せずAzure Blob Storageへ保存する。
 
 ## 8. 公平性を守るための分解
 
-AWS L4/L40SとRTX 4090の速度差を配置方式の差と誤認しないため、結果を三層で示す。
+Azure A100とRTX 4090の速度差、および8 GPU対12 GPUの規模差を配置方式の差と誤認しないため、結果を三層で示す。
 
 ### Layer A: End-to-end system comparison
 
-実際のAWS実測とローカルsimulatorのE2E結果をそのまま比較する。これは利用者が選ぶsystem
+実際のAzure実測とローカルsimulatorのE2E結果をそのまま比較する。これは利用者が選ぶsystem
 全体の比較であり、hardware差を含む。
 
 ### Layer B: Service-only comparison
 
-AWS同一AZ clientの結果からWANを除き、ローカル側もaccess networkを分離して示す。
+Azure同一zone/VNet clientの結果からWANを除き、ローカル側もaccess networkを分離して示す。
 
 ### Layer C: Hardware-normalized sensitivity
 
-AWS 1 GPUで得たservice curveをLLMServingSimのAWS hardware profileへ反映する、または
+Azure A100 1 GPUで得たservice curveをLLMServingSimのA100 hardware profileへ反映する、または
 requests/GPU、tokens/GPUで正規化する。これは診断であり、Layer Aの置換ではない。
 
 ## 9. コスト計画
 
-### 9.1 AWS実測コスト
+### 9.1 Azure実測コスト
 
 PrimaryはOn-Demand料金とする。Spotは中断リスクを含む感度分析として別に示す。
 
 ```text
-AWS run cost =
-    GPU instance uptime × current On-Demand rate
-  + router/load-generator EC2 cost
-  + EBS cost
+Azure run cost =
+    GPU VM uptime × current Pay-As-You-Go rate
+  + router/load-generator VM cost
+  + Managed Disk cost
   + data transfer cost
   + load balancer/NAT等の実使用cost
 ```
 
-価格を文書へ手入力して固定しない。Run開始時にAWS Price List APIからregion、OS、tenancy、
-instance typeに一致する価格を取得し、取得日時、currency、SKUをmetadataへ保存する。AWS Price
-List APIはSKU単位の価格照会を提供する。ただし公式説明どおり、price listとservice pricing
-pageに差がある場合はservice pricing pageが優先されるため、請求結果でも検算する。
+価格を文書へ手入力して固定しない。Run開始時にAzure Retail Prices APIからregion、OS、
+`armSkuName`に一致する価格を取得し、取得日時、currency、meter ID、SKUをmetadataへ保存する。
+contract割引の適用がある場合はretail価格と実費を両方示し、Cost Managementの請求結果で検算する。
 
 参考：
 
-- [AWS Price List API](https://docs.aws.amazon.com/aws-cost-management/latest/APIReference/Welcome.html)
-- [Calling AWS services and prices using the AWS Price List](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/price-changes.html)
+- [Azure Retail Prices REST API](https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices)
 
 Instance起動からmodel readiness、warm-up、実験、artifact upload、停止までを区間別に記録する。
 主比較は実験占有時間コスト、運用判断にはmodel loadを含む総run costも併記する。
@@ -363,19 +353,19 @@ local_hourly_cost = hourly_capex + hourly_energy + maintenance + network
 
 ### Phase 0: Cloud inventory（課金をほぼ発生させない）
 
-1. AWS account、region、budget alert、IAM roleを確認
-2. G6/G6e offeringとquotaをCLIで保存
-3. On-Demand価格をPrice List APIで保存
-4. 必要AMI、driver、CUDA、Docker availabilityを確認
+1. Azure subscription、region、budget alert、RBACを確認
+2. `az vm list-skus`でND A100 v4/NDm A100 v4のzone、restriction、quotaを保存
+3. Pay-As-You-Go価格をAzure Retail Prices APIで保存
+4. 必要なVM image、NVIDIA driver、CUDA、Docker availabilityを確認
 5. `cloud_inventory.json`と`DECISIONS.md`を作成
 
-Gate: Primary/fallback instance、region、最大replica数、概算上限費用が承認されるまでGPUを
+Gate: Primary/fallback VM SKU、region/zone、A100×8 quota、概算上限費用が承認されるまでGPU VMを
 起動しない。
 
 ### Phase 1: One-GPU smoke test
 
-1. 1 instanceだけ起動
-2. 固定container/model revisionでvLLMを起動
+1. A100×8 VMを1台だけ起動
+2. `CUDA_VISIBLE_DEVICES=0`とTP=1で固定container/model revisionのvLLMを起動
 3. 10 requestsをstreaming実行
 4. Token ID、output長、TTFT parser、metricsを確認
 5. Model load時間とidle/active powerを記録
@@ -386,19 +376,19 @@ Gate: 10/10成功、token count一致、raw streamから最初のtokenを正し�
 ### Phase 2: One-GPU service curve
 
 Concurrency 1、2、4、8、16、32を固定順ではなくseed付きで実行し、throughputとlatency curveを
-取得する。Saturation point、OOM point、max stable concurrencyを決める。これをpool routerの
-admission設定に使う。
+取得する。Saturation point、OOM point、max stable concurrencyを決める。このphaseでもVM全体が
+課金されるため、完了後ただちにTP=8の計測へ進むかVMをdeallocateする。
 
 Gate: 同一点を3回実行し、主要metricのばらつきを確認する。
 
-### Phase 3: Pool pilot
+### Phase 3: A100×8 TP=8 pilot
 
-1. 12 replicaを同一AZへ起動
-2. Health check完了後にwarm-up
+1. 単一VMでvLLMを`--tensor-parallel-size 8`で起動
+2. 8 GPUすべての認識、NCCL/NVLink動作、health check完了後にwarm-up
 3. Peak 2x・2000件をservice-onlyで実行
 4. 同じrunを本郷側E2Eで実行
-5. Raw artifactsをS3へ保存
-6. Instanceを停止
+5. Raw artifactsをAzure Blob Storageへ保存
+6. VMをdeallocateし、OS/Managed Diskなどの残存課金を確認
 
 Gate: launch lag、failure率、token一致、telemetry欠損を確認する。Gate失敗runを性能結果へ使わない。
 
@@ -409,7 +399,7 @@ Peak 2x、5x、10xを実行する。各run前に同じwarm-upを行い、run間�
 
 ### Phase 5: Local simulator replay
 
-AWS finalで使ったrequest ID、arrival schedule、input/output tokensをそのまま使い、次を実行する。
+Azure finalで使ったrequest ID、arrival schedule、input/output tokensをそのまま使い、次を実行する。
 
 - `local_pp1_kv`
 - `local_pp2_kv`
@@ -431,7 +421,7 @@ BaselineでPP2のRouter queueが`npu_memory`により発生する負荷点だけ
 
 ### Phase 7: Final repetition
 
-Pilotでparameterを固定後、最低3 arrival seedsでfinalを実行する。可能なら日を分け、AWS
+Pilotでparameterを固定後、最低3 arrival seedsでfinalを実行する。可能なら日を分け、Azure
 capacityの時間変動も観測する。Mean差だけでなくbootstrap confidence intervalを出す。
 
 ## 11. Run acceptance criteria
@@ -442,9 +432,9 @@ capacityの時間変動も観測する。Mean差だけでなくbootstrap confide
 - Client launch lag p99が事前閾値を超過
 - Controlled modeでactual output tokensが不一致
 - Model/container/revisionが他Armと異なる
-- GPU replicaが途中restart/OOM
+- vLLM backendが途中restart/OOM、または8 GPUのいずれかが脱落
 - Telemetryまたはraw request CSVが欠損
-- AWS instance数が計画値と異なる
+- Azure VM SKU、GPU数、TP degreeが計画値と異なる
 - Retryによる重複requestを成功件数へ二重計上
 
 Failureやtimeoutがsystem saturationの結果ならrun自体を捨てない。Infrastructure/configuration
@@ -455,7 +445,7 @@ failureとsystem capacity failureを分類する。
 ### 12.1 Directory layout
 
 ```text
-experiments/2026-08-17_aws_selfhost_vs_local/
+experiments/2026-08-17_azure_selfhost_vs_local/
   EXPERIMENT_PLAN.md
   DECISIONS.md
   WORKLOAD_HANDOFF.md
@@ -470,13 +460,13 @@ experiments/2026-08-17_aws_selfhost_vs_local/
     local_tco.json
   workloads/
     manifests/
-    hongo/                 # S3から取得するGit管理外JSONL
+    hongo/                 # Azure Blob Storageから取得するGit管理外JSONL
   scripts/
     upload_workloads.sh
     download_workloads.sh
     validate_workloads.py
   results/
-    aws/<run_id>/
+    azure/<run_id>/
     local/<run_id>/
   analysis/
   report/
@@ -498,25 +488,25 @@ replica_id, http_status, retry_count, error_type
 ### 12.3 Run metadata
 
 ```text
-git commit, dirty state, region, AZ, instance type/count,
-AMI, driver, CUDA, vLLM version, container digest,
+git commit, dirty state, subscription ID, region, zone, VM SKU/count,
+GPU model/count/VRAM, TP degree, VM image, driver, CUDA, vLLM version, container digest,
 model ID/revision, dtype, KV dtype,
 vLLM CLI, router policy, workload hash,
 start/end UTC, pricing SKU/rate/retrieved_at,
 warm-up condition, client host specification
 ```
 
-## 13. AWS側Codexへの依頼順序
+## 13. Azure側Codexへの依頼順序
 
-AWS側Codexには一度に全権限を与えて全実験を走らせず、次の単位で依頼する。
+Azure側Codexには一度に全権限を与えて全実験を走らせず、次の単位で依頼する。
 
-1. **Read-only inventory**：region、quota、instance offering、価格を調査しartifact化
-2. **IaC review**：Terraform planまで。GPU instanceはまだ起動しない
+1. **Read-only inventory**：region、quota、SKU availability、価格を調査しartifact化
+2. **IaC review**：Terraform planまで。GPU VMはまだ起動しない
 3. **One-GPU smoke**：予算上限と自動停止を設定して10件だけ実行
 4. **Service curve**：1 GPUの飽和点を測定
-5. **Pool pilot**：12 GPUを短時間起動してPeak 2xのみ
+5. **TP=8 pilot**：A100×8 VMでPeak 2xのみ
 6. **Load sweep**：pilot承認後に2x/5x/10x
-7. **Artifact export and destroy**：S3同期、resource残存確認、Cost Explorer確認
+7. **Artifact export and destroy**：Blob同期、resource残存確認、Cost Management確認
 
 各段階で次を報告させる。
 
@@ -531,11 +521,11 @@ AWS側Codexには一度に全権限を与えて全実験を走らせず、次の
 
 ```text
 このリポジトリの
-experiments/2026-08-17_aws_selfhost_vs_local/EXPERIMENT_PLAN.md
+experiments/2026-08-17_azure_selfhost_vs_local/EXPERIMENT_PLAN.md
 を完全に読み、Phase 0のread-only cloud inventoryだけを実施してください。
 
-まだGPU instance、NAT Gateway、Load Balancerなど課金resourceを作成しないでください。
-AWS account/regionの現状、G6/G6e offering、Service Quotas、On-Demand価格、
+まだGPU VM、NAT Gateway、Load Balancerなど課金resourceを作成しないでください。
+Azure subscription/regionの現状、ND A100 v4/NDm A100 v4のSKU restrictionとquota、Pay-As-You-Go価格、
 推奨primary/fallback構成をartifactへ保存してください。
 
 計画から変更が必要な場合は、変更を実施せずDECISIONS.mdへ選択肢、費用、影響を記載し、
@@ -544,13 +534,13 @@ AWS account/regionの現状、G6/G6e offering、Service Quotas、On-Demand価格
 
 ## 15. 未確定事項
 
-AWSへ移る前またはPhase 0で次を確定する。
+Azureへ移る前またはPhase 0で次を確定する。
 
-- AWS accountと予算上限
+- Azure subscriptionと予算上限
 - Primary region
-- G6の具体的な1-GPU sizeとquota
-- BF16での安定起動可否
-- 12 replica同時確保の可否
+- A100 40 GB版と80 GB版のどちらをfinalに使うか
+- 対象SKUのA100×8 quotaとzoneでのdeploy可否
+- BF16、TP=8での安定起動可否
 - Model weightの取得方法とlicense/token管理
 - 本郷側load generatorの実行host
 - Local設備購入費、償却期間、電力単価、PUE
@@ -560,14 +550,14 @@ AWSへ移る前またはPhase 0で次を確定する。
 
 ## 16. 最終成果物
 
-1. AWS IaCと再現手順
+1. Azure IaCと再現手順
 2. Immutable raw request/telemetry/pricing artifacts
-3. AWSとlocalのrequest-level統合CSV
+3. Azureとlocalのrequest-level統合CSV
 4. TTFT CDF、TTFT breakdown、throughput、SLO曲線
 5. Cost/request、cost/token、cost/SLO-success曲線
 6. Break-even utilization／requests per day
 7. Hardware差、network差、policy差を分けた批判的レポート
-8. 全AWS resourceを削除したことの確認
+8. 全Azure resourceを削除したことの確認
 
 最終結論は「どちらが常に優れているか」ではなく、負荷、SLO、利用率、network条件ごとに
-AWSセルフホストとローカル分散の適用領域を示す形にする。
+Azureセルフホストとローカル分散の適用領域を示す形にする。

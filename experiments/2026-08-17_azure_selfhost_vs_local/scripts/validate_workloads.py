@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate transferred Hongo workloads before an AWS benchmark run."""
+"""Validate transferred Hongo workloads before an Azure benchmark run."""
 
 from __future__ import annotations
 

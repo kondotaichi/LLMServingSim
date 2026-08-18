@@ -1,8 +1,8 @@
-# AWS比較実験用ワークロード引き継ぎ仕様
+# Azure比較実験用ワークロード引き継ぎ仕様
 
 ## 1. 正本
 
-AWS比較で使用するワークロードの正本は、次の2000件版3ファイルとする。
+Azure比較で使用するワークロードの正本は、次の2000件版3ファイルとする。
 300件版やPP=2用にinstance割当を書き換えた派生版は使用しない。
 
 ```text
@@ -11,8 +11,8 @@ experiments/2026-08-09-test-some-workload/workloads/full/hongo_peak_5x_seed1.jso
 experiments/2026-08-09-test-some-workload/workloads/full/hongo_peak_10x_seed1.jsonl
 ```
 
-これらはGit管理されていない生成物である。したがって、リポジトリをcloneするだけではAWS側へ
-渡らない。AWS側で実験を始める前に、3ファイルをS3などへ別送し、下表のSHA-256を照合する。
+これらはGit管理されていない生成物である。したがって、リポジトリをcloneするだけではAzure側へ
+渡らない。Azure側で実験を始める前に、3ファイルをAzure Blob Storageへ別送し、下表のSHA-256を照合する。
 照合できないファイルで本計測を開始してはならない。
 
 | 負荷 | 件数 | Target rate | Timeline | Size | SHA-256 |
@@ -46,7 +46,7 @@ Hongo workloadの詳細な生成前提は
 
 ## 3. Replayで使うfield
 
-JSONLは1行1requestである。AWS replayで最低限使用するfieldは次のとおり。
+JSONLは1行1requestである。Azure replayで最低限使用するfieldは次のとおり。
 
 | Field | 用途 |
 |---|---|
@@ -57,10 +57,10 @@ JSONLは1行1requestである。AWS replayで最低限使用するfieldは次の
 | `request_send_time_ns` | Open-loopの送信予定時刻 |
 | `arrival_time_ns` | 元シミュレーションで通信遅延を含む到着時刻 |
 | `reuse_prefix_toks` | 再利用可能prefix長 |
-| `assigned_instance_id` | 12 physical GPUを前提にした元割当 |
+| `assigned_instance_id` | 12 physical GPUを前提にした元割当（AzureのTP=8 backendでは使用しない） |
 | `communication_latency_ns` | WAN込み比較を別算する場合の元通信遅延 |
 
-AWSのservice-only比較では、run開始を0として`request_send_time_ns`をreplayする。
+Azureのservice-only比較では、run開始を0として`request_send_time_ns`をreplayする。
 `arrival_time_ns`と`communication_latency_ns`をserver送信時刻へ二重加算しない。
 WAN込みの感度分析では、service-only結果へ通信遅延を分離して加える。
 
@@ -74,32 +74,33 @@ experiments/2026-08-01_hongo_workload/scripts/prepare_hongo_workload.py
 ```
 
 再生成にはShareGPT由来の入力データ、tokenizer revision、依存パッケージが必要になるため、
-AWS側では原則として正本JSONLを転送してhash固定する。再生成は欠損時の代替ではなく、別workloadを
+Azure側では原則として正本JSONLを転送してhash固定する。再生成は欠損時の代替ではなく、別workloadを
 作る操作として扱い、元のhashと一致しなければ同一条件の比較に含めない。
 
-## 5. S3経由の引き継ぎ手順
+## 5. Azure Blob Storage経由の引き継ぎ手順
 
-ローカル側では、AWS CLIの認証後に次を実行する。`<S3_URI>`は
-`s3://bucket/prefix`形式へ置き換える。この処理は正本を検査してから3ファイルとmanifestをuploadする。
+ローカル側では、AzCopyで`azcopy login`を実行し、対象containerへの権限を確認してから次を実行する。
+`<BLOB_PREFIX_URL>`は`https://<account>.blob.core.windows.net/<container>/<prefix>`形式へ置き換える。
+この処理は正本を検査してから3ファイルとmanifestをuploadする。
 
 ```bash
-experiments/2026-08-17_aws_selfhost_vs_local/scripts/upload_workloads.sh <S3_URI>
+experiments/2026-08-17_azure_selfhost_vs_local/scripts/upload_workloads.sh <BLOB_PREFIX_URL>
 ```
 
-AWS instance側ではrepositoryをcloneした後、同じS3 URIを指定する。
+Azure VM側ではrepositoryをcloneした後、同じBlob prefix URLを指定する。
 
 ```bash
-experiments/2026-08-17_aws_selfhost_vs_local/scripts/download_workloads.sh <S3_URI>
+experiments/2026-08-17_azure_selfhost_vs_local/scripts/download_workloads.sh <BLOB_PREFIX_URL>
 ```
 
 download後の配置先は次のとおりであり、script内で件数、session、順序、全負荷間の内容一致、
 ファイルサイズ、SHA-256を検査する。
 
 ```text
-experiments/2026-08-17_aws_selfhost_vs_local/workloads/hongo/
+experiments/2026-08-17_azure_selfhost_vs_local/workloads/hongo/
 ```
 
-## 6. AWS側で本計測前に行う検査
+## 6. Azure側で本計測前に行う検査
 
 1. 3ファイルのSHA-256が本書と一致すること。
 2. 各ファイルが2000行、1129 session、1129 userであること。
@@ -113,6 +114,6 @@ experiments/2026-08-17_aws_selfhost_vs_local/workloads/hongo/
 
 - 43.55%は「2000件のうち、同一sessionの2回目以降」の比率であり、cache hit率ではない。
 - `reuse_prefix_toks`は再利用可能量であり、実際のhitやmigration量はcache状態とroutingに依存する。
-- 12-wayの`assigned_instance_id`をAWS replicaへ固定すると地理routing込みの比較になる。純粋な
-  serving性能比較ではrouter policyを実験因子として明記し、元割当と混同しない。
+- `assigned_instance_id`はローカル12-GPU配置用のfieldであり、Azureの単一TP=8 backendでは送信先の選択に使用しない。
+  このtopology差を結果で明記する。
 - Peak 2x/5x/10xはrequest数を増やす条件ではない。同じ2000件のtimeline圧縮である。
