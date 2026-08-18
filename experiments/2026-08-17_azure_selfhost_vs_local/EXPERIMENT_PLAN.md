@@ -164,8 +164,8 @@ prompt本文をGitへ保存しない。
 `experiments/2026-08-09-test-some-workload/workloads/full/`にあるHongo 2000件版を使用する。
 先頭300件だけを切り出さない。セッション継続、入出力長、arrival order、ユーザー配置を維持する。
 正本ファイル名、SHA-256、統計、field semantics、Azure側の受入検査は
-`WORKLOAD_HANDOFF.md`を唯一の引き継ぎ仕様とする。対象JSONLはGit管理されていないため、repoの
-cloneとは別にAzure側へ転送し、hash一致を確認してから本計測を開始する。
+`WORKLOAD_HANDOFF.md`を唯一の引き継ぎ仕様とする。対象JSONLは通常のGit fileとして管理し、Azure VM側で
+clone後にhash一致を確認してから本計測を開始する。
 
 負荷点は次の順で実行する。
 
@@ -460,7 +460,7 @@ experiments/2026-08-17_azure_selfhost_vs_local/
     local_tco.json
   workloads/
     manifests/
-    hongo/                 # Azure Blob Storageから取得するGit管理外JSONL
+    hongo/                 # Gitで管理する正本JSONL
   scripts/
     upload_workloads.sh
     download_workloads.sh

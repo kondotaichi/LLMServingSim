@@ -6,13 +6,12 @@ Azure比較で使用するワークロードの正本は、次の2000件版3フ�
 300件版やPP=2用にinstance割当を書き換えた派生版は使用しない。
 
 ```text
-experiments/2026-08-09-test-some-workload/workloads/full/hongo_peak_2x_seed1.jsonl
-experiments/2026-08-09-test-some-workload/workloads/full/hongo_peak_5x_seed1.jsonl
-experiments/2026-08-09-test-some-workload/workloads/full/hongo_peak_10x_seed1.jsonl
+experiments/2026-08-17_azure_selfhost_vs_local/workloads/hongo/hongo_peak_2x_seed1.jsonl
+experiments/2026-08-17_azure_selfhost_vs_local/workloads/hongo/hongo_peak_5x_seed1.jsonl
+experiments/2026-08-17_azure_selfhost_vs_local/workloads/hongo/hongo_peak_10x_seed1.jsonl
 ```
 
-これらはGit管理されていない生成物である。したがって、リポジトリをcloneするだけではAzure側へ
-渡らない。Azure側で実験を始める前に、3ファイルをAzure Blob Storageへ別送し、下表のSHA-256を照合する。
+これらは通常のGit fileとして管理する。Azure VM側でrepositoryをcloneし、下表のSHA-256を照合する。
 照合できないファイルで本計測を開始してはならない。
 
 | 負荷 | 件数 | Target rate | Timeline | Size | SHA-256 |
@@ -74,27 +73,21 @@ experiments/2026-08-01_hongo_workload/scripts/prepare_hongo_workload.py
 ```
 
 再生成にはShareGPT由来の入力データ、tokenizer revision、依存パッケージが必要になるため、
-Azure側では原則として正本JSONLを転送してhash固定する。再生成は欠損時の代替ではなく、別workloadを
+Azure側では原則としてGit上の正本JSONLを使い、hashを照合する。再生成は欠損時の代替ではなく、別workloadを
 作る操作として扱い、元のhashと一致しなければ同一条件の比較に含めない。
 
-## 5. Azure Blob Storage経由の引き継ぎ手順
+## 5. Git経由の引き継ぎ手順
 
-ローカル側では、AzCopyで`azcopy login`を実行し、対象containerへの権限を確認してから次を実行する。
-`<BLOB_PREFIX_URL>`は`https://<account>.blob.core.windows.net/<container>/<prefix>`形式へ置き換える。
-この処理は正本を検査してから3ファイルとmanifestをuploadする。
-
-```bash
-experiments/2026-08-17_azure_selfhost_vs_local/scripts/upload_workloads.sh <BLOB_PREFIX_URL>
-```
-
-Azure VM側ではrepositoryをcloneした後、同じBlob prefix URLを指定する。
+ローカル側では3ファイルをcommitし、通常の`git push`でpushする。
+Azure VM側では通常のclone時にworkloadも取得される。
 
 ```bash
-experiments/2026-08-17_azure_selfhost_vs_local/scripts/download_workloads.sh <BLOB_PREFIX_URL>
+git clone --branch experiment/sim-hack --recurse-submodules https://github.com/kondotaichi/LLMServingSim.git
+cd LLMServingSim
 ```
 
-download後の配置先は次のとおりであり、script内で件数、session、順序、全負荷間の内容一致、
-ファイルサイズ、SHA-256を検査する。
+取得後の配置先は次のとおりである。本計測前にvalidatorで件数、session、順序、
+全負荷間の内容一致、ファイルサイズ、SHA-256を検査する。
 
 ```text
 experiments/2026-08-17_azure_selfhost_vs_local/workloads/hongo/
