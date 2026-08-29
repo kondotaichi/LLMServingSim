@@ -547,6 +547,62 @@ No dedicated unit-test suite. Validate by:
 3. For profiler changes: edit `MODEL` / `HARDWARE` in `profiler/profile.sh`
    and run `./profiler/profile.sh` from the repo root inside the vLLM container.
 
+## Experiment figure style
+
+Use a consistent publication-style tone for experiment figures, especially TTFT breakdowns
+and CDFs. The canonical visual reference is
+`experiments/2026-07-14_prompt6000_90s_three_policy_良結果/figures/three_policy_handoff_only_ttft_breakdown.png`.
+
+### Shared styling
+
+- Use a white figure and axes background (`#ffffff`).
+- Use the following muted palette consistently by semantic role:
+  - Router queue: `#c74b3a`
+  - Scheduler queue: `#e79b37`
+  - KV transfer: `#865bd6`
+  - Compute / prefill: `#31866f`
+  - RTT / other communication: `#4f83c2`
+  - Residual / unclassified: `#8a8178`
+- Use the following method colors when the semantic component palette does not apply:
+  - Baseline / Cloud / policy A: `#2f5f9f`
+  - Alternative / Distributed / proposed method: `#31866f`
+  - Difference or warning series: `#c74b3a`
+- Use dark text (`#262421`) and light warm-gray grid lines (`#d9d2c8`, linewidth `0.8`).
+- Draw data above the grid with `axis.set_axisbelow(True)`.
+- Hide the top and right spines. For horizontal bar charts, hide the left spine too.
+- Use frameless legends. Prefer a single horizontal legend near the lower-right or below the
+  axes when it does not obscure data.
+- Save PNG figures at 180 dpi with `bbox_inches="tight"` and an explicit white facecolor.
+- Use titles around 16--17 pt, axis labels around 12 pt, tick labels around 11 pt, and legend
+  text around 9--10 pt. Keep the same hierarchy across related figures.
+- Keep titles descriptive but compact. Use a second title line only for the population or
+  comparison scope.
+
+### TTFT breakdowns
+
+- Use horizontal stacked bars with height approximately `0.58`.
+- Preserve the semantic component order: Router queue, Scheduler queue, KV transfer when
+  applicable, Compute / prefill, RTT / other communication, then residual if needed.
+- Separate stacked components with a 2 pt white edge.
+- Put a rounded millisecond label in white bold text at the center of a segment when the
+  segment is wide enough to read; do not force labels into narrow segments.
+- Put total mean TTFT immediately after each bar in dark bold text. Include `(n=...)` when
+  compared populations have different sizes.
+- Add 14--18% x-axis headroom beyond the largest total so total labels are not clipped.
+- Invert the y-axis so the baseline or first listed condition appears at the top.
+- Use `mean E2E TTFT components (ms)` as the default x-axis label.
+
+### TTFT CDFs
+
+- Use 2.3--2.6 pt lines and the shared method colors. Distinguish overlapping curves with
+  both color and line style, not color alone.
+- Keep the CDF y-axis fixed to `[0, 1.01]` and label axes `E2E TTFT (ms)` and `CDF`.
+- Use a frameless legend and the same ordering of methods used in breakdown figures.
+- When curves overlap, add a paired-difference panel or inset using the same request IDs.
+  Choose us or ms so the difference is legible, draw a dotted zero reference line, and use
+  the difference-series red (`#c74b3a`). Do not imply a visible absolute difference by
+  artificially truncating the main CDF axis.
+
 ## Common Pitfalls
 
 - **Don't edit `astra-sim/`** unless the change targets simulator integration

@@ -242,7 +242,8 @@ def main():
                                  'NEAREST_CAPACITY_MULTI_WAITING_FORMULA_KV_RESERVE',
                                  'NEAREST_CAPACITY_MULTI_PRESSURE_FORMULA_KV_RESERVE',
                                  'NEAREST_CAPACITY_MULTI_RANDOM_FORMULA_KV_RESERVE',
-                                 'NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE'],
+                                 'NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE',
+                                 'NEAREST_CAPACITY_MULTI_PRESSURE_COLD_RESERVE'],
                         default='LOAD',
                         help='request routing policy across instances: LOAD (vLLM-style weighted least-loaded, default), '
                         'RR (round-robin), RAND (random), PROMPT (prompt length to token-budget fit), '
@@ -276,7 +277,8 @@ def main():
                         'gate, but rank admissible redirect targets by waiting requests, capacity pressure, or a '
                         'seeded random choice), NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE (no-model ablation: '
                         'keep an admissible request local; otherwise immediately redirect to the admissible target '
-                        'with minimum capacity pressure)')
+                        'with minimum capacity pressure), NEAREST_CAPACITY_MULTI_PRESSURE_COLD_RESERVE '
+                        '(matched control that uses the same target selection but recomputes redirected prefixes)')
     parser.add_argument('--gpu-backbone-bandwidth-gbps', type=float, default=None,
                         help='GPU-to-GPU backbone link bandwidth in Gbps, used by NEAREST_MIGRATE and '
                         'NEAREST_MIGRATE_KV for the inter-GPU request forward (distinct from the UE<->GPU '
@@ -755,6 +757,7 @@ def main():
         stdout=subprocess.PIPE,
         stderr=None,
         universal_newlines=True,
+        cwd=run_paths.inputs_root,
     )
 
     # DP group synchronization: defer trace generation until all members have scheduled

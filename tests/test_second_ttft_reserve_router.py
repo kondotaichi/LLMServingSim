@@ -469,6 +469,25 @@ class DynamicFormulaRouterTest(unittest.TestCase):
             'home_not_admissible_min_pressure',
         )
 
+    def test_multi_pressure_cold_control_recomputes_redirected_prefix(self):
+        home = make_scheduler(0)
+        target = make_scheduler(1)
+        self.constrain(home)
+        router = Router(
+            2, [home, target], 1,
+            routing_policy='NEAREST_CAPACITY_MULTI_PRESSURE_COLD_RESERVE',
+            gpu_backbone_bandwidth_gbps=100.0,
+            apn_fixed_propagation_ns=10.0,
+        )
+        request = make_request(1)
+
+        deferred = router._maybe_capacity_dynamic_formula_route(request, 1_000)
+
+        self.assertTrue(deferred)
+        self.assertEqual(request['assigned_instance_id'], 1)
+        self.assertEqual(request['geo']['oneshot_selected_route'], 'cold_migrate')
+        self.assertNotIn('failover', request)
+
 
 class FakeMigrationMemory(FakeMemory):
     """Extends FakeMemory with just enough of seed_migrated_prefix's

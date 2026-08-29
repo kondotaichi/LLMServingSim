@@ -22,9 +22,13 @@ class MemoryModel():
         self.tp_size = tp_size
         self.pp_size = pp_size
         self.ep_size = ep_size
-        self.npu_mem = npu_mem * GB_TO_BYTE # GB -> Byte
-        self.cpu_mem = cpu_mem * GB_TO_BYTE # GB -> Byte
-        self.cxl_mem = cxl_mem * GB_TO_BYTE
+        # Memory capacities are byte counts throughout the model. Cluster
+        # configs may specify fractional GiB values (for example, after
+        # reserving part of VRAM for a colocated workload), so round once at
+        # the boundary instead of letting floats leak into trace sizes.
+        self.npu_mem = round(npu_mem * GB_TO_BYTE) # GB -> Byte
+        self.cpu_mem = round(cpu_mem * GB_TO_BYTE) # GB -> Byte
+        self.cxl_mem = round(cxl_mem * GB_TO_BYTE)
         self.block_size = block_size
         self.fp = fp // 8 # bit -> byte of floating point
         self.kv_fp = 1 if kv_cache_dtype == 'fp8' else self.fp  # KV cache bytes per element

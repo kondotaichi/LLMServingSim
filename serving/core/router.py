@@ -17,6 +17,7 @@ MULTI_CANDIDATE_SELECTORS = {
     'NEAREST_CAPACITY_MULTI_PRESSURE_FORMULA_KV_RESERVE': 'min_pressure',
     'NEAREST_CAPACITY_MULTI_RANDOM_FORMULA_KV_RESERVE': 'random',
     'NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE': 'min_pressure_no_model',
+    'NEAREST_CAPACITY_MULTI_PRESSURE_COLD_RESERVE': 'min_pressure_no_model',
 }
 FORMULA_MULTI_CANDIDATE_POLICIES = tuple(
     policy for policy, selector in MULTI_CANDIDATE_SELECTORS.items()
@@ -207,6 +208,11 @@ class Router:
         # Pending requests (loaded but not yet routed)
         self._pending_requests = []
         self._pending_idx = 0
+        # Requests that have arrived but cannot fit on any eligible instance.
+        # They are retried only after scheduler/KV capacity changes, instead
+        # of being reinserted at current_time + 1 ns and busy-polled.
+        self._capacity_blocked_requests = deque()
+        self._last_capacity_signature = None
         self._enable_prefix_caching = False
         self._is_init = True
 
@@ -728,12 +734,80 @@ class Router:
                 "Request cannot fit on any redirect candidate even when idle: "
                 f"required KV {required} bytes, largest KV budget {largest_budget} bytes"
             )
-        req_data['arrival_time_ns'] = max(
-            int(req_data['arrival_time_ns']), int(current_time_ns) + 1
-        )
         req_data.setdefault('_router_capacity_wait_start_ns', int(current_time_ns))
         req_data['_capacity_retry_count'] = int(req_data.get('_capacity_retry_count', 0)) + 1
+        req_data['_capacity_blocked'] = True
         return True
+
+    def _capacity_signature(self):
+        """Return reserved load relevant to a future capacity admission."""
+        signature = []
+        for sched in self.prefill_schedulers:
+            active = list(self._active_requests(sched))
+            projected_active_kv_bytes = sum(
+                self._full_request_kv_bytes(sched, req.output)
+                for req in active
+            )
+            reservations = self._adaptive_reservations.get(
+                sched.instance_id, {}
+            )
+            reserved_kv_bytes = sum(
+                int(reservation['kv_bytes'])
+                for reservation in reservations.values()
+            )
+            signature.append((
+                int(sched.instance_id),
+                len(active) + len(reservations),
+                projected_active_kv_bytes + reserved_kv_bytes,
+                int(sched.max_num_seqs),
+                int(sched.memory.mem_for_kv),
+            ))
+        return tuple(signature)
+
+    @staticmethod
+    def _capacity_improved(previous, current):
+        if previous is None:
+            return False
+        previous_by_id = {state[0]: state[1:] for state in previous}
+        for state in current:
+            instance_id = state[0]
+            old = previous_by_id.get(instance_id)
+            if old is None:
+                return True
+            old_active, old_projected_kv, old_max_seqs, old_kv_budget = old
+            active, projected_kv, max_seqs, kv_budget = state[1:]
+            if (
+                active < old_active
+                or projected_kv < old_projected_kv
+                or max_seqs > old_max_seqs
+                or kv_budget > old_kv_budget
+            ):
+                return True
+        return False
+
+    def _release_capacity_blocked_if_changed(self):
+        """Make blocked requests routable after an admission-relevant change."""
+        signature = self._capacity_signature()
+        improved = self._capacity_improved(
+            self._last_capacity_signature, signature
+        )
+        self._last_capacity_signature = signature
+        if not improved or not self._capacity_blocked_requests:
+            return 0
+
+        released = len(self._capacity_blocked_requests)
+        while self._capacity_blocked_requests:
+            req_data = self._capacity_blocked_requests.popleft()
+            req_data.pop('_capacity_blocked', None)
+            self._insert_pending_sorted(req_data)
+        return released
+
+    def _requeue_deferred_request(self, req_data):
+        """Park capacity waits; keep timed communication delays sorted."""
+        if req_data.get('_capacity_blocked', False):
+            self._capacity_blocked_requests.append(req_data)
+        else:
+            self._insert_pending_sorted(req_data)
 
     def _maybe_reject_and_redirect(self, req_data, current_time_ns):
         """NEAREST_REJECT: check the nearest GPU's capacity; if full, charge a
@@ -1332,7 +1406,17 @@ class Router:
         reuse_tokens = min(
             input_tokens, int(req_data.get('reuse_prefix_toks', 0))
         )
-        target_prefill = input_tokens - reuse_tokens if reuse_tokens > 0 else input_tokens
+        cold_migrate = (
+            self.routing_policy
+            == 'NEAREST_CAPACITY_MULTI_PRESSURE_COLD_RESERVE'
+        )
+        target_prefill = (
+            input_tokens
+            if cold_migrate
+            else input_tokens - reuse_tokens
+            if reuse_tokens > 0
+            else input_tokens
+        )
         request_migration = self._request_migration_cost_ns(geo)
         downlink_distance_ns = round(
             self.apn_fixed_propagation_ns
@@ -1587,7 +1671,11 @@ class Router:
 
         mode = (
             'kv_handoff'
-            if reuse_tokens > 0 and target.enable_prefix_caching
+            if (
+                reuse_tokens > 0
+                and target.enable_prefix_caching
+                and not cold_migrate
+            )
             else 'cold_migrate'
         )
         req_data['_oneshot_selected_route'] = mode
@@ -2483,12 +2571,12 @@ class Router:
         Called at the start of each iteration in the main simulation loop.
         Returns the number of newly routed requests.
         """
+        self._release_capacity_blocked_if_changed()
         routed = 0
         while self._pending_idx < len(self._pending_requests):
             req_data = self._pending_requests[self._pending_idx]
             if req_data['arrival_time_ns'] > current_time_ns:
                 break
-
             self._record_initial_capacity_context(req_data)
             self._record_user_activity(req_data, current_time_ns)
 
@@ -2512,7 +2600,7 @@ class Router:
                         req_data, current_time_ns, nearest_sched, nearest_sched
                     )
                     self._pending_requests.pop(self._pending_idx)
-                    self._insert_pending_sorted(req_data)
+                    self._requeue_deferred_request(req_data)
                     continue
                 self._clear_capacity_failure(req_data)
 
@@ -2522,7 +2610,7 @@ class Router:
                     # round trip + redirect; reinsert in sorted order and retry
                     # later instead of routing it now.
                     self._pending_requests.pop(self._pending_idx)
-                    self._insert_pending_sorted(req_data)
+                    self._requeue_deferred_request(req_data)
                     continue
 
             if self.routing_policy in ("NEAREST_MIGRATE", "NEAREST_MIGRATE_KV") and not req_data.get('_reject_resolved', False):
@@ -2531,13 +2619,13 @@ class Router:
                     # transfer only (the UE->GPU_A uplink already elapsed);
                     # reinsert in sorted order and retry later.
                     self._pending_requests.pop(self._pending_idx)
-                    self._insert_pending_sorted(req_data)
+                    self._requeue_deferred_request(req_data)
                     continue
 
             if self.routing_policy == "NEAREST_SECOND_TTFT_RESERVE" and not req_data.get('_adaptive_resolved', False):
                 if self._maybe_adaptive_route(req_data, current_time_ns):
                     self._pending_requests.pop(self._pending_idx)
-                    self._insert_pending_sorted(req_data)
+                    self._requeue_deferred_request(req_data)
                     continue
 
             if self.routing_policy in (
@@ -2546,7 +2634,7 @@ class Router:
             ):
                 if self._maybe_capacity_oneshot_route(req_data, current_time_ns):
                     self._pending_requests.pop(self._pending_idx)
-                    self._insert_pending_sorted(req_data)
+                    self._requeue_deferred_request(req_data)
                     continue
 
             if self.routing_policy in (
@@ -2557,7 +2645,7 @@ class Router:
                     req_data, current_time_ns
                 ):
                     self._pending_requests.pop(self._pending_idx)
-                    self._insert_pending_sorted(req_data)
+                    self._requeue_deferred_request(req_data)
                     continue
 
             # Capacity may change while a redirected request is in transit.
@@ -2588,22 +2676,11 @@ class Router:
                         "match any available prefill instance."
                     )
                 if not self._has_capacity(target_sched, req_data, record_failure=False):
-                    if (
-                        self.routing_policy ==
-                        "NEAREST_CAPACITY_ONESHOT_FORMULA_KV_RESERVE"
-                        and not self.enable_oneshot_target_reservation
-                    ):
-                        req_data.setdefault(
-                            '_router_capacity_wait_start_ns', int(current_time_ns)
-                        )
-                        req_data['_capacity_retry_count'] = int(
-                            req_data.get('_capacity_retry_count', 0)
-                        ) + 1
-                    req_data['arrival_time_ns'] = max(
-                        int(req_data['arrival_time_ns']), int(current_time_ns) + 1
+                    self._defer_capacity_retry(
+                        req_data, current_time_ns, target_sched, target_sched
                     )
                     self._pending_requests.pop(self._pending_idx)
-                    self._insert_pending_sorted(req_data)
+                    self._requeue_deferred_request(req_data)
                     continue
             # <<< SPEC: redirect-on-capacity routing
 
@@ -2658,6 +2735,7 @@ class Router:
                 geo = {}
                 req_data['geo'] = geo
             self._record_decision_capacity_context(req_data, sched)
+            req_data.pop('_capacity_blocked', None)
             wait_start = req_data.get('_router_capacity_wait_start_ns')
             geo['router_capacity_wait_start_ns'] = (
                 int(wait_start) if wait_start is not None else -1
@@ -2690,7 +2768,10 @@ class Router:
 
     def has_pending_requests(self):
         """Check if there are unrouted requests remaining."""
-        return self._pending_idx < len(self._pending_requests)
+        return (
+            self._pending_idx < len(self._pending_requests)
+            or bool(self._capacity_blocked_requests)
+        )
 
     def get_first_arrival_time(self):
         """Return the first request's arrival time in ns, or 1 if no requests."""

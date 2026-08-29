@@ -13,11 +13,11 @@ RUN python -m pip install \
     numpy==1.23.5
 
 # Chakra currently declares protobuf 6.x, while its checked-in generated
-# et_def_pb2.py requires runtime 7.35. Install Chakra first, then align the
+# et_def_pb2.py requires runtime 7.35.1. Install Chakra first, then align the
 # runtime with the generated code so every new container is immediately usable.
 COPY astra-sim/extern/graph_frontend/chakra /tmp/chakra
 RUN python -m pip install /tmp/chakra \
-    && python -m pip install --upgrade --no-deps protobuf==7.35.0 \
+    && python -m pip install --upgrade --no-deps protobuf==7.35.1 \
     && python -c "import chakra; from chakra.schema.protobuf import et_def_pb2" \
     && rm -rf /tmp/chakra
 

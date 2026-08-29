@@ -62,10 +62,17 @@ JOBS+=("2|redirect_no_kv|NEAREST_MIGRATE|rtx4090_hongo.json|hongo_${LOAD_LEVEL}_
 JOBS+=("3|redirect_kv_nopp|NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE|rtx4090_hongo.json|hongo_${LOAD_LEVEL}_seed${SEED}.jsonl|")
 JOBS+=("4|redirect_kv_pp2|NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE|rtx4090_hongo_pp2.json|hongo_${LOAD_LEVEL}_seed${SEED}_pp2.jsonl|--pp-size 2")
 JOBS+=("5|redirect_kv_pp2_c|NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE|rtx4090_hongo_pp2.json|hongo_${LOAD_LEVEL}_seed${SEED}_pp2.jsonl|--pp-size 2 --enable-proactive-kv-prewarm --proactive-kv-prewarm-pressure-threshold 0.6 --proactive-kv-prewarm-top-k 3")
+JOBS+=("6|redirect_kv_nopp_c|NEAREST_CAPACITY_MULTI_PRESSURE_KV_RESERVE|rtx4090_hongo.json|hongo_${LOAD_LEVEL}_seed${SEED}.jsonl|--enable-proactive-kv-prewarm --proactive-kv-prewarm-pressure-threshold 0.6 --proactive-kv-prewarm-top-k 3")
+
+# ARM_FILTER: comma-separated arm numbers to (re-)run. Empty (default) runs all.
+ARM_FILTER="${ARM_FILTER:-}"
 
 running=0
 for job in "${JOBS[@]}"; do
   IFS='|' read -r arm_num arm_name policy cluster dataset extra <<< "$job"
+  if [[ -n "$ARM_FILTER" && ",$ARM_FILTER," != *",$arm_num,"* ]]; then
+    continue
+  fi
   # shellcheck disable=SC2206
   extra_flags=($extra)
 

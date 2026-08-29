@@ -29,6 +29,7 @@ ARMS = [
     ("3: redirect_kv_nopp", "3_redirect_kv_nopp", 1),
     ("4: redirect_kv_pp2", "4_redirect_kv_pp2", 2),
     ("5: redirect_kv_pp2_c", "5_redirect_kv_pp2_c", 2),
+    ("6: redirect_kv_nopp_c", "6_redirect_kv_nopp_c", 1),
 ]
 
 COMPONENTS = [
@@ -87,15 +88,22 @@ def breakdown(rows: list[dict[str, str]], pp_size: int) -> dict[str, float]:
     kv_ms = mean([float(row["kv_migration_latency_ns"]) / 1e6 for row in rows])
     pp_ms = mean([estimate_pp_transfer_ms(float(row["input"]), pp_size) for row in rows])
     prefill_ms = mean([float(row["prefill_service_ns"]) / 1e6 for row in rows])
-    scheduler_ms = mean([float(row["queueing_before_ttft_ns"]) / 1e6 for row in rows])
     ttft_ms = [float(row["e2e_ttft_ns"]) / 1e6 for row in rows]
+    # Older result bundles recorded router capacity wait outside
+    # queueing_before_ttft_ns, while newer bundles included it there. Use the
+    # explicit router timer and derive the mutually exclusive scheduler
+    # residual so breakdown colors remain comparable across both versions.
     router_ms = mean([
+        float(row.get("router_capacity_wait_ns", "0") or "0") / 1e6
+        for row in rows
+    ])
+    scheduler_ms = mean([
         max(
             0.0,
             float(row["e2e_ttft_ns"])
+            - float(row.get("router_capacity_wait_ns", "0") or "0")
             - float(row["prefill_service_ns"])
             - float(row["communication_latency_ns"])
-            - float(row["queueing_before_ttft_ns"]),
         ) / 1e6
         for row in rows
     ])
@@ -202,7 +210,12 @@ def text_color_for_fill(fill: str) -> str:
     return "#fffdf8" if luminance < 145 else "#1f1d1a"
 
 
-def render_svg(summary: list[dict[str, float | int | str]], title: str, out_path: Path) -> None:
+def render_svg(
+    summary: list[dict[str, float | int | str]],
+    title: str,
+    out_path: Path,
+    axis_label: str = "mean E2E TTFT components (ms)",
+) -> None:
     row_h = 76
     top = 90
     left = 260
@@ -220,7 +233,7 @@ def render_svg(summary: list[dict[str, float | int | str]], title: str, out_path
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
         '<rect width="100%" height="100%" fill="#faf8f4"/>',
         f'<text x="{width / 2:.1f}" y="42" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="700">{html.escape(title)}</text>',
-        f'<text x="{width / 2:.1f}" y="{height - 28}" text-anchor="middle" font-family="Arial, sans-serif" font-size="20">mean E2E TTFT components (ms)</text>',
+        f'<text x="{width / 2:.1f}" y="{height - 28}" text-anchor="middle" font-family="Arial, sans-serif" font-size="20">{html.escape(axis_label)}</text>',
     ]
 
     for tick in range(ticks + 1):
@@ -284,8 +297,10 @@ def render_cdf_svg(
         "1: no_redirect": colors["Router queue"],
         "2: redirect_no_kv": colors["Scheduler queue"],
         "3: redirect_kv_nopp": colors["KV transfer"],
+        "3: redirect_kv_pp1": colors["KV transfer"],
         "4: redirect_kv_pp2": colors["PP transfer (est.)"],
         "5: redirect_kv_pp2_c": colors["Compute / prefill"],
+        "6: redirect_kv_nopp_c": colors["RTT / other comm"],
     }
     max_ttft = max(max(values) for values in cdf_data.values())
     x_max = max_ttft * 1.03 if max_ttft else 1.0

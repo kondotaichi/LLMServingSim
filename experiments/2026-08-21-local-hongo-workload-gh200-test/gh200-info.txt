@@ -1,0 +1,300 @@
+  Miyabi-G Network / GPU Communication Final Report
+=================================================
+Date: 2026-08-24
+Scope: GH200 GPU node, InfiniBand/RDMA, GPUDirect RDMA, NCCL P2P,
+       8-node collectives, all-pair P2P coverage, concurrent P2P coverage
+
+1. Completion status
+--------------------
+Measurement collection is complete for the main objective.
+
+Completed:
+- 1-node static GPU / HCA / RDMA / NUMA / software environment checks
+- 2-node InfiniBand host-memory RDMA bandwidth
+- 2-node RDMA latency
+- 2-node GPU Direct RDMA bandwidth
+- 2-node NCCL sendrecv with IB/GDRDMA verification
+- 2-node NCCL AllReduce / AllGather / AllToAll
+- 8-node NCCL IB/GDR verification
+- 8-node AllReduce / AllGather / AllToAll
+- 28 / 28 small-message node-pair tests
+- 28 / 28 large-message node-pair tests
+- 4 / 4 simultaneous P2P tests
+- 8-node static-information collection
+
+PBS status after completion:
+- No unfinished job found.
+
+Important caveat:
+- same-switch / same-rack mapping was not established from the supplied logs.
+- TCP iperf3 is not included in this final quantitative summary.
+  These are auxiliary for the current simulator-oriented objective.
+
+2. Hardware / software configuration
+------------------------------------
+GPU:
+- Device: NVIDIA GH200 120GB
+- GPU memory reported by nvidia-smi: 97871 MiB
+- GPU PCI bus: 0009:01:00.0
+- Driver: 595.58.03
+- Driver-supported CUDA level reported by nvidia-smi: CUDA 13.2
+- CUDA compiler toolkit used for nccl-tests: CUDA 13.0
+- GPU-to-NIC topology: NODE / C2C-visible to NCCL
+- NVLink: not present / not supported for this one-GPU-per-node topology
+
+CPU / NUMA:
+- Architecture: aarch64
+- CPU: Arm Neoverse-V2
+- CPU cores: 72
+- CPU NUMA node: 0
+- GPU/HBM NUMA node reported separately by Grace Hopper platform
+- GPU and HCA both associated with NUMA node 0 from PCI information
+
+NIC / HCA:
+- HCA: mlx5_0
+- Device family: Mellanox / NVIDIA ConnectX-7
+- CA type: MT4129
+- Firmware: 28.49.1014
+- Physical ports per HCA: 1
+- Linux IB interface: ibP2s2
+- Link layer: InfiniBand
+- State: Active
+- Physical state: LinkUp
+- Nominal link rate: 200 Gb/s (2X NDR)
+- Nominal byte rate: 25.0 GB/s
+- MTU: 4096 B
+- Driver: mlx5_core[ib_ipoib]
+- Driver version: 26.04-0.8.6
+
+GPU Direct / RDMA support:
+- nvidia_peermem: loaded
+- UCX: CUDA, GDRCopy, verbs, mlx5, rdmacm enabled
+- UCX version: 1.21.0
+- Open MPI: 4.1.9a1
+- NCCL used in tests: 2.27.7 + CUDA 13.0
+- NCCL RDMA plugin: NCCL RDMA Plugin v10 / IBext_v10
+- DMA-BUF available
+- NCCL backend: InfiniBand
+- GDRDMA: enabled and observed in the actual NCCL data path
+- Observed path string: NET/IBext_v10/.../GDRDMA
+- No evidence of NET/Socket fallback in the successful measurements
+
+3. Raw network / RDMA performance
+---------------------------------
+Nominal InfiniBand:
+- 200 Gb/s = 25.000 GB/s
+
+Host-memory RDMA Write:
+- Peak/large-message result: 198.29 Gb/s
+- Equivalent: 24.786 GB/s
+- Efficiency versus 200 Gb/s nominal: 99.15 %
+
+GPU Direct RDMA Write:
+- Result: 198.09 Gb/s
+- Equivalent: 24.761 GB/s
+- Efficiency versus 200 Gb/s nominal: 99.05 %
+- GPU device buffers were directly allocated and used by perftest.
+
+Small-message RDMA latency:
+- 2-byte typical: about 1.46 us
+- 2-byte average: about 1.45 us
+- Small-message baseline: approximately 1.45 us
+
+Interpretation:
+- The InfiniBand fabric itself reaches essentially line rate.
+- GPUDirect RDMA adds almost no throughput loss relative to host-memory RDMA.
+
+4. NCCL point-to-point performance
+----------------------------------
+Representative 2-node pair:
+- NCCL sendrecv 8 B:
+  - out-of-place time: 16.89 us
+  - in-place time: 16.78 us
+
+- NCCL sendrecv 1 MiB:
+  - approximately 14.88-14.95 GB/s
+
+- NCCL sendrecv 1 GiB:
+  - out-of-place algbw/busbw: 22.96 GB/s
+  - in-place algbw/busbw: 22.96 GB/s
+  - Equivalent line rate: about 183.68 Gb/s
+  - Efficiency versus 25 GB/s nominal: 91.84 %
+
+Interpretation:
+- Pure RDMA latency and NCCL end-to-end GPU communication latency should be
+  modeled separately.
+- RDMA fabric latency baseline: ~1.45 us
+- NCCL GPU-to-GPU small-message latency baseline: ~16-17 us
+- NCCL large-message sustainable GPU-to-GPU bandwidth: ~23 GB/s
+
+5. Two-node NCCL collectives
+----------------------------
+AllReduce, 1 GiB:
+- algbw: 24.67 GB/s
+- busbw: 24.67 GB/s
+- #wrong: 0
+
+AllGather, 1 GiB:
+- out-of-place algbw: 49.24 GB/s
+- out-of-place busbw: 24.62 GB/s
+- in-place algbw: 49.27 GB/s
+- in-place busbw: 24.63 GB/s
+- #wrong: 0
+
+AllToAll, 1 GiB:
+- out-of-place algbw: 45.89 GB/s
+- out-of-place busbw: 22.94 GB/s
+- in-place algbw: 45.82 GB/s
+- in-place busbw: 22.91 GB/s
+- #wrong: 0
+
+Note:
+- For physical-network comparison, busbw is the more meaningful quantity.
+- algbw can exceed 25 GB/s for collectives because of the operation's data-volume
+  definition; this does not imply the physical NIC exceeds NDR200 line rate.
+
+6. Eight-node NCCL collectives
+------------------------------
+All tests completed with:
+- Out of bounds values: 0 OK
+
+Average bus bandwidth across tested message sizes:
+- AllReduce: 18.82 GB/s
+- AllGather: 18.3804 GB/s
+- AllToAll: 21.6395 GB/s
+
+Large-message values visible in the supplied 8-node output:
+
+AllGather, 1 GiB:
+- out-of-place algbw: 27.56 GB/s
+- out-of-place busbw: 24.11 GB/s
+- in-place algbw: 28.18 GB/s
+- in-place busbw: 24.66 GB/s
+- #wrong: 0
+
+AllToAll, 1 GiB:
+- out-of-place algbw: 27.31 GB/s
+- out-of-place busbw: 23.90 GB/s
+- in-place algbw: 27.40 GB/s
+- in-place busbw: 23.98 GB/s
+- #wrong: 0
+
+AllToAll 1-GiB physical-link utilization:
+- 23.98 / 25.00 = 95.92 %
+
+AllReduce:
+- Average bus bandwidth across tested sizes: 18.82 GB/s
+- #wrong: 0
+- The exact 1-GiB row was not present in the pasted excerpt used to build this
+  report, so it is intentionally not guessed here.
+
+7. Eight-node all-pair / contention coverage
+--------------------------------------------
+Node-pair coverage:
+- Small-message pairs completed: 28 / 28
+- Large-message pairs completed: 28 / 28
+- Concurrent P2P pairs completed: 4 / 4
+- Pair job reached TEST COMPLETE.
+
+Concurrent 1-GiB examples visible in the supplied output:
+- mg0945 <-> mg0989:
+  - out-of-place: 22.18 GB/s
+  - in-place: 22.15 GB/s
+  - Avg bus bandwidth: 22.1648 GB/s
+  - #wrong: 0
+
+- mg1008 <-> mg1011:
+  - out-of-place: 22.93 GB/s
+  - in-place: 22.98 GB/s
+  - Avg bus bandwidth: 22.9528 GB/s
+  - #wrong: 0
+
+The remaining two concurrent-pair numeric results and the full 28-pair numerical
+table were not included in the pasted transcript available to this report.
+Therefore, best/worst/mean across all 28 pairs are not fabricated here.
+
+However, the measurements themselves were successfully collected in:
+- /work/gj26/b20122/miyabi_network_results/8node_pairs/
+  miyabi_8node_pairs_2763685.opbs.log
+- /work/gj26/b20122/miyabi_network_results/8node_pairs/
+  concurrent_2763685.opbs/
+
+8. Error / correctness checks
+-----------------------------
+- All NCCL tests shown completed with #wrong = 0 or
+  "Out of bounds values : 0 OK".
+- 8-node collective job reached COMPLETE.
+- 8-node pair job reached TEST COMPLETE.
+- No unfinished PBS jobs remained after completion.
+
+One informational message appeared:
+- mlx5dv_get_data_direct_sysfs_path failed with errno 19
+
+This did not prevent the successful GDRDMA path:
+- nvidia-peermem enabled
+- DMA-BUF enabled
+- NET/IB selected
+- actual NCCL channels used GDRDMA
+- collectives and P2P completed with no data-validation errors
+
+Therefore this message is not treated as a measurement failure.
+
+9. Recommended simulator parameters
+-----------------------------------
+Use two levels depending on what the simulator represents.
+
+A. Physical / RDMA network model
+- nominal_link_bw: 25.0 GB/s
+- measured_host_rdma_bw: 24.79 GB/s
+- measured_gpu_rdma_bw: 24.76 GB/s
+- link_latency_baseline: approximately 1.45 us
+
+Recommended if the simulator models the network/fabric separately from NCCL:
+- link_bw = approximately 24.8 GB/s
+- link_latency = approximately 1.45 us
+
+B. Application-facing NCCL GPU-to-GPU model
+- large-message NCCL P2P bandwidth: approximately 22.96 GB/s
+- small-message NCCL sendrecv latency: approximately 16.8 us
+
+Recommended if the simulator models end-to-end GPU communication:
+- effective_link_bw = approximately 23.0 GB/s
+- effective_link_latency = approximately 16-17 us
+
+For collectives:
+- Do not derive collective performance solely from P2P bandwidth.
+- Prefer the measured 8-node NCCL curves.
+- 8-node AllGather and AllToAll reach approximately 24-25 GB/s bus bandwidth
+  for large messages.
+- Use the measured AllReduce curve directly when modeling TP-style workloads.
+
+10. Final conclusion
+--------------------
+The measured Miyabi-G GH200 network is operating normally and close to its
+NDR200 design limit.
+
+Key conclusions:
+1. ConnectX-7 / InfiniBand is Active and LinkUp at 200 Gb/s.
+2. Host-memory RDMA reaches about 198.29 Gb/s (~99.1 % of nominal).
+3. GPU Direct RDMA reaches about 198.09 Gb/s (~99.0 % of nominal).
+4. NCCL explicitly selects InfiniBand and GDRDMA, not Socket fallback.
+5. NCCL GPU-to-GPU P2P reaches about 22.96 GB/s at 1 GiB.
+6. Eight-node collectives complete without correctness errors.
+7. Eight-node large-message AllGather / AllToAll bus bandwidth approaches
+   24-25 GB/s.
+8. All 28 node pairs and four concurrent P2P pairs were successfully executed.
+9. The primary measurement campaign required for simulator parameterization is
+   complete.
+
+Primary result directories on Miyabi:
+- /work/gj26/b20122/miyabi_network_results/2node/
+- /work/gj26/b20122/miyabi_network_results/8node/
+- /work/gj26/b20122/miyabi_network_results/8node_pairs/
+
+Suggested authoritative values for current simulation work:
+- Physical RDMA bandwidth: 24.8 GB/s
+- Physical RDMA latency: 1.45 us
+- NCCL GPU-to-GPU effective bandwidth: 23.0 GB/s
+- NCCL GPU-to-GPU small-message latency: 16-17 us
+
+End of report.
