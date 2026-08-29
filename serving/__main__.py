@@ -29,9 +29,6 @@ from serving.core.logger import *
 from serving.core.run_paths import build_run_paths, resolve_run_id
 import sys as flush
 
-from pyinstrument import Profiler
-
-
 def _pad_batch_to_max(batch, max_len):
     """Pad a batch up to ``max_len`` for DP-sync.
 
@@ -343,6 +340,17 @@ def main():
                         'certain), crediting elapsed pinned time against the real migration if the '
                         'decision later commits to the same target. Requires '
                         '--enable-scheduler-hide-kv-migration (default: disabled)')
+    parser.add_argument('--disable-kv-carry',
+                        action=argparse.BooleanOptionalAction, default=False,
+                        help='Keep the capacity-aware redirect routing decision (and its load '
+                        'spreading) fully intact, but skip physically migrating the KV prefix across '
+                        'the redirect: the redirected request lands on the same target the router '
+                        'chose, yet recomputes its prompt (prefix reuse lost) instead of reusing a '
+                        'migrated cache. This isolates the pure KV-migration benefit under an '
+                        'otherwise identical routing policy (e.g. arm4 with KV vs arm5 without), '
+                        'unlike NEAREST_MIGRATE which also changes the routing itself. Only '
+                        'cross-instance migrate_kv failovers are affected; genuine local-KV hits are '
+                        'preserved (default: disabled)')
     # SPEC: 2026-07-28_proactive_kv_prewarm -- Method C. Independent of the
     # two flags above: a request-agnostic background process (capacity-
     # pressure-triggered), not a per-request routing decision, so it does
@@ -683,6 +691,7 @@ def main():
                     enable_scheduler_hide_kv_migration=args.enable_scheduler_hide_kv_migration,
                     enable_formula_local_wait_point_estimate=args.enable_formula_local_wait_point_estimate,
                     enable_speculative_kv_migration=args.enable_speculative_kv_migration,
+                    disable_kv_carry=args.disable_kv_carry,
                     enable_proactive_kv_prewarm=args.enable_proactive_kv_prewarm,
                     proactive_kv_prewarm_pressure_threshold=args.proactive_kv_prewarm_pressure_threshold,
                     proactive_kv_prewarm_top_k=args.proactive_kv_prewarm_top_k,

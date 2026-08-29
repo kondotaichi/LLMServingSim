@@ -96,6 +96,11 @@ class Router:
             enable_scheduler_hide_kv_migration=False,
             enable_formula_local_wait_point_estimate=False,
             enable_speculative_kv_migration=False,
+            # Skip physically carrying the KV prefix across a redirect while
+            # leaving the (capacity-aware) routing decision unchanged, so the
+            # pure KV-migration benefit can be isolated against an otherwise
+            # identical routing arm. See serving/__main__.py --disable-kv-carry.
+            disable_kv_carry=False,
             # SPEC: 2026-07-28_proactive_kv_prewarm -- Method C (capacity-
             # pressure-triggered proactive KV pre-migration). Independent of
             # Method A/B: request-agnostic background process, not a
@@ -154,6 +159,7 @@ class Router:
             enable_formula_local_wait_point_estimate
         )
         self.enable_speculative_kv_migration = bool(enable_speculative_kv_migration)
+        self.disable_kv_carry = bool(disable_kv_carry)
         if self.enable_speculative_kv_migration and not self.enable_scheduler_hide_kv_migration:
             raise ValueError(
                 "enable_speculative_kv_migration requires "
@@ -2295,6 +2301,25 @@ class Router:
         if failover.get('failover_mode') != 'migrate_kv':
             return
         if failover.get('_kv_migration_applied', False):
+            return
+        # --disable-kv-carry: the router already committed to this (capacity-
+        # aware) redirect target, but we deliberately skip physically seeding
+        # the migrated prefix. The request recomputes its whole prompt (reuse
+        # lost, no migration bytes/latency), matching a "redirect without KV
+        # carry" counterfactual under an otherwise identical routing policy.
+        if self.disable_kv_carry:
+            failover.update({
+                '_kv_migration_applied': True,
+                'kv_migration_tokens': 0,
+                'kv_migration_bytes': 0,
+                'kv_migration_latency_ns': 0,
+                'kv_migration_distance_latency_ns': 0,
+                'kv_migration_serialization_latency_ns': 0,
+            })
+            geo = dict(req_data.get('geo') or {})
+            geo.setdefault('communication_latency_ns', 0)
+            geo.setdefault('request_send_time_ns', int(req_data['arrival_time_ns']))
+            req_data['geo'] = geo
             return
         if not sched.enable_prefix_caching:
             raise RuntimeError("failover_mode=migrate_kv requires --enable-prefix-caching")
